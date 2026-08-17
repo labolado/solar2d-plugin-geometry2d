@@ -1,0 +1,8 @@
+# Only the Corona plugin entry point is exported; everything else is localized so it
+# can't clash with or be interposed by the engine's libc++.
+{
+  global:
+    luaopen_plugin_geometry2d;
+  local:
+    *;
+};

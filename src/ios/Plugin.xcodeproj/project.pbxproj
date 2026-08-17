@@ -1,0 +1,232 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AA00000000000000000000B1 /* plugin_geometry2d.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* plugin_geometry2d.cpp */; };
+		AA00000000000000000000B2 /* polypartition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* polypartition.cpp */; };
+		AA00000000000000000000B3 /* ByteReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* ByteReader.cpp */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AA00000000000000000000A1 /* plugin_geometry2d.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = plugin_geometry2d.cpp; path = ../shared/plugin_geometry2d.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000000000000000000A2 /* polypartition.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = polypartition.cpp; path = ../../third_party/polypartition/src/polypartition.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000000000000000000A3 /* ByteReader.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ByteReader.cpp; path = ../../third_party/ByteReader/ByteReader.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000000000000000000A0 /* libplugin_geometry2d.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libplugin_geometry2d.a; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AA00000000000000000000F0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AA00000000000000000000C1 /* shared */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000000000000000000A1 /* plugin_geometry2d.cpp */,
+				AA00000000000000000000A2 /* polypartition.cpp */,
+				AA00000000000000000000A3 /* ByteReader.cpp */,
+			);
+			name = shared;
+			sourceTree = "<group>";
+		};
+		AA00000000000000000000C0 /* mainGroup */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000000000000000000C1 /* shared */,
+				AA00000000000000000000CF /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AA00000000000000000000CF /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000000000000000000A0 /* libplugin_geometry2d.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AA00000000000000000000D0 /* plugin_geometry2d */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA00000000000000000000EB /* Build configuration list for PBXNativeTarget "plugin_geometry2d" */;
+			buildPhases = (
+				AA00000000000000000000E0 /* Sources */,
+				AA00000000000000000000F0 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = plugin_geometry2d;
+			productName = plugin_geometry2d;
+			productReference = AA00000000000000000000A0 /* libplugin_geometry2d.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AA00000000000000000000DF /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0940;
+			};
+			buildConfigurationList = AA00000000000000000000EA /* Build configuration list for PBXProject "Plugin" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				English,
+				en,
+				Base,
+			);
+			mainGroup = AA00000000000000000000C0 /* mainGroup */;
+			productRefGroup = AA00000000000000000000CF /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AA00000000000000000000D0 /* plugin_geometry2d */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AA00000000000000000000E0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA00000000000000000000B1 /* plugin_geometry2d.cpp in Sources */,
+				AA00000000000000000000B2 /* polypartition.cpp in Sources */,
+				AA00000000000000000000B3 /* ByteReader.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AA00000000000000000000EC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CODE_SIGNING_REQUIRED = NO;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				COPY_PHASE_STRIP = NO;
+				ENABLE_BITCODE = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA00000000000000000000ED /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CODE_SIGNING_REQUIRED = NO;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				COPY_PHASE_STRIP = YES;
+				ENABLE_BITCODE = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				ONLY_ACTIVE_ARCH = NO;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AA00000000000000000000EE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				EXECUTABLE_PREFIX = lib;
+				HEADER_SEARCH_PATHS = (
+					"${SRCROOT}/Native/Corona/shared/include/Corona",
+					"${SRCROOT}/Native/Corona/shared/include/lua",
+					"${SRCROOT}/../../third_party/polypartition/src",
+					"${SRCROOT}/../../third_party/solar2d_native_utils",
+					"${SRCROOT}/../../third_party/ByteReader",
+					"${SRCROOT}/../../third_party/earcut/include",
+				);
+				PRODUCT_NAME = plugin_geometry2d;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"BR_NAMESPACE_PREFIX=geometry2d_br",
+					"$(inherited)",
+				);
+				SKIP_INSTALL = YES;
+				USER_HEADER_SEARCH_PATHS = "${SRCROOT}/Native/Corona/shared/include/Corona ${SRCROOT}/Native/Corona/shared/include/lua";
+			};
+			name = Debug;
+		};
+		AA00000000000000000000EF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				EXECUTABLE_PREFIX = lib;
+				HEADER_SEARCH_PATHS = (
+					"${SRCROOT}/Native/Corona/shared/include/Corona",
+					"${SRCROOT}/Native/Corona/shared/include/lua",
+					"${SRCROOT}/../../third_party/polypartition/src",
+					"${SRCROOT}/../../third_party/solar2d_native_utils",
+					"${SRCROOT}/../../third_party/ByteReader",
+					"${SRCROOT}/../../third_party/earcut/include",
+				);
+				PRODUCT_NAME = plugin_geometry2d;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"BR_NAMESPACE_PREFIX=geometry2d_br",
+					"$(inherited)",
+				);
+				SKIP_INSTALL = YES;
+				USER_HEADER_SEARCH_PATHS = "${SRCROOT}/Native/Corona/shared/include/Corona ${SRCROOT}/Native/Corona/shared/include/lua";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AA00000000000000000000EA /* Build configuration list for PBXProject "Plugin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA00000000000000000000EC /* Debug */,
+				AA00000000000000000000ED /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA00000000000000000000EB /* Build configuration list for PBXNativeTarget "plugin_geometry2d" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA00000000000000000000EE /* Debug */,
+				AA00000000000000000000EF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AA00000000000000000000DF /* Project object */;
+}

@@ -1,0 +1,14 @@
+plugins/*.tgz
+src/mac/plugin_geometry2d.dylib
+src/mac/build
+src/ios/libplugin.geometry2d.a
+
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

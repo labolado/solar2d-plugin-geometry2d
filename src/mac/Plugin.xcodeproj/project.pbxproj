@@ -1,0 +1,258 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		G200000000000000000000C1 /* plugin_geometry2d.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000B1 /* plugin_geometry2d.cpp */; };
+		G200000000000000000000C2 /* polypartition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000B2 /* polypartition.cpp */; };
+		G200000000000000000000C3 /* ByteReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000B3 /* ByteReader.cpp */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		G100000000000000000000B1 /* plugin_geometry2d.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = plugin_geometry2d.cpp; path = ../shared/plugin_geometry2d.cpp; sourceTree = SOURCE_ROOT; };
+		G100000000000000000000B2 /* polypartition.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = polypartition.cpp; path = ../../third_party/polypartition/src/polypartition.cpp; sourceTree = SOURCE_ROOT; };
+		G100000000000000000000B3 /* ByteReader.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ByteReader.cpp; path = ../../third_party/ByteReader/ByteReader.cpp; sourceTree = SOURCE_ROOT; };
+		A4430897164C70D800B9117B /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		A49186401641DDB800A39286 /* plugin_geometry2d.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = plugin_geometry2d.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A49186381641DDB800A39286 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		G300000000000000000000A1 /* shared */ = {
+			isa = PBXGroup;
+			children = (
+				G100000000000000000000B1 /* plugin_geometry2d.cpp */,
+				G100000000000000000000B2 /* polypartition.cpp */,
+				G100000000000000000000B3 /* ByteReader.cpp */,
+			);
+			name = shared;
+			sourceTree = "<group>";
+		};
+		A482DA7815F9B7E70084DC42 = {
+			isa = PBXGroup;
+			children = (
+				G300000000000000000000A1 /* shared */,
+				A482DA8615F9B7E70084DC42 /* Frameworks */,
+				A482DA8515F9B7E70084DC42 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A482DA8515F9B7E70084DC42 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A49186401641DDB800A39286 /* plugin_geometry2d.dylib */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A482DA8615F9B7E70084DC42 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A4430897164C70D800B9117B /* Foundation.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A49186331641DDB800A39286 /* plugin_geometry2d */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A491863D1641DDB800A39286 /* Build configuration list for PBXNativeTarget "plugin_geometry2d" */;
+			buildPhases = (
+				A49186341641DDB800A39286 /* Sources */,
+				A49186381641DDB800A39286 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = plugin_geometry2d;
+			productName = plugin_geometry2d;
+			productReference = A49186401641DDB800A39286 /* plugin_geometry2d.dylib */;
+			productType = "com.apple.product-type.library.dynamic";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A482DA7A15F9B7E70084DC42 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0440;
+			};
+			buildConfigurationList = A482DA7D15F9B7E70084DC42 /* Build configuration list for PBXProject "Plugin" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				English,
+				en,
+				Base,
+			);
+			mainGroup = A482DA7815F9B7E70084DC42;
+			productRefGroup = A482DA8515F9B7E70084DC42 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A49186331641DDB800A39286 /* plugin_geometry2d */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A49186341641DDB800A39286 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				G200000000000000000000C1 /* plugin_geometry2d.cpp in Sources */,
+				G200000000000000000000C2 /* polypartition.cpp in Sources */,
+				G200000000000000000000C3 /* ByteReader.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A482DA9715F9B7E70084DC42 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				COPY_PHASE_STRIP = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					CORONA_DEBUG,
+					"$(inherited)",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = (
+					"-undefined",
+					dynamic_lookup,
+				);
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		A482DA9815F9B7E70084DC42 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				OTHER_LDFLAGS = (
+					"-undefined",
+					dynamic_lookup,
+				);
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		A491863E1641DDB800A39286 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				EXECUTABLE_PREFIX = "";
+				INSTALL_PATH = "@rpath";
+				LIBRARY_SEARCH_PATHS = (
+					"${SRCROOT}/third_party_libs",
+					"$(inherited)",
+				);
+				PRODUCT_NAME = plugin_geometry2d;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"BR_NAMESPACE_PREFIX=geometry2d_br",
+					"$(inherited)",
+				);
+				HEADER_SEARCH_PATHS = (
+					"${SRCROOT}/Native/Corona/shared/include/Corona",
+					"${SRCROOT}/Native/Corona/shared/include/lua",
+					"${SRCROOT}/../../third_party/polypartition/src",
+					"${SRCROOT}/../../third_party/solar2d_native_utils",
+					"${SRCROOT}/../../third_party/ByteReader",
+					"${SRCROOT}/../../third_party/earcut/include",
+				);
+				USER_HEADER_SEARCH_PATHS = "${SRCROOT}/Native/Corona/shared/include/Corona ${SRCROOT}/Native/Corona/shared/include/lua";
+			};
+			name = Debug;
+		};
+		A491863F1641DDB800A39286 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				EXECUTABLE_PREFIX = "";
+				INSTALL_PATH = "@rpath";
+				LIBRARY_SEARCH_PATHS = (
+					"${SRCROOT}/third_party_libs",
+					"$(inherited)",
+				);
+				PRODUCT_NAME = plugin_geometry2d;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"BR_NAMESPACE_PREFIX=geometry2d_br",
+					"$(inherited)",
+				);
+				HEADER_SEARCH_PATHS = (
+					"${SRCROOT}/Native/Corona/shared/include/Corona",
+					"${SRCROOT}/Native/Corona/shared/include/lua",
+					"${SRCROOT}/../../third_party/polypartition/src",
+					"${SRCROOT}/../../third_party/solar2d_native_utils",
+					"${SRCROOT}/../../third_party/ByteReader",
+					"${SRCROOT}/../../third_party/earcut/include",
+				);
+				USER_HEADER_SEARCH_PATHS = "${SRCROOT}/Native/Corona/shared/include/Corona ${SRCROOT}/Native/Corona/shared/include/lua";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A482DA7D15F9B7E70084DC42 /* Build configuration list for PBXProject "Plugin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A482DA9715F9B7E70084DC42 /* Debug */,
+				A482DA9815F9B7E70084DC42 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A491863D1641DDB800A39286 /* Build configuration list for PBXNativeTarget "plugin_geometry2d" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A491863E1641DDB800A39286 /* Debug */,
+				A491863F1641DDB800A39286 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A482DA7A15F9B7E70084DC42 /* Project object */;
+}

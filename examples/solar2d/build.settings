@@ -1,0 +1,40 @@
+-- local webm_base = "https://github.com/labolado/solar2d-plugin_geometry2d/releases/download/v2/"
+
+settings =
+{
+    orientation =
+    {
+        default = "landscapeRight",
+        supported = { "landscapeLeft", "landscapeRight" }
+    },
+
+    excludeFiles =
+    {
+        all = { ".DS_Store", "*.bak", "*.psd", ".git", ".gitignore", ".cache", "*.md" },
+    },
+
+    plugins =
+    {
+        ["plugin.geometry2d"] =
+        {
+            publisherId = "com.labolado",
+            supportedPlatforms =
+            {
+                -- ["mac-sim"]    = { url = webm_base .. "2025.3720-mac-sim.tgz" },
+                -- ["android"]    = { url = webm_base .. "2025.3720-android.tgz" },
+                -- ["iphone"]     = { url = webm_base .. "2025.3720-iphone.tgz" },
+                -- ["iphone-sim"] = { url = webm_base .. "2025.3720-iphone-sim.tgz" },
+                -- ["win32-sim"]  = { url = webm_base .. "2025.3720-win32-sim.tgz" },
+                -- ["appletvos"]  = { url = webm_base .. "2025.3720-appletvos.tgz" },
+                ["android"] = { url = "http://127.0.0.1:10980/plugins/android/plugin.geometry2d/2025.3720-android.tgz" },
+                ["iphone"] = { url = "http://127.0.0.1:10980/plugins/iphone/plugin.geometry2d/2025.3720-iphone.tgz" },
+                ["iphone-sim"] = { url = "http://127.0.0.1:10980/plugins/iphone-sim/plugin.geometry2d/2025.3720-iphone-sim.tgz" },
+                ["macos"] = { url = "http://127.0.0.1:10980/plugins/mac-sim/plugin.geometry2d/2025.3720-mac-sim.tgz" },
+                ["mac-sim"] = { url = "http://127.0.0.1:10980/plugins/mac-sim/plugin.geometry2d/2025.3720-mac-sim.tgz" },
+                ["win32"] = { url = "http://127.0.0.1:10980/plugins/win32/plugin.geometry2d/2025.3720-win32-sim.tgz" },
+                ["win32-sim"] = { url = "http://127.0.0.1:10980/plugins/win32/plugin.geometry2d/2025.3720-win32-sim.tgz" },
+                ["appletvos"] = { url = "http://127.0.0.1:10980/plugins/appletvos/plugin.geometry2d/2025.3720-appletvos.tgz" },
+            }
+        },
+    }
+}
