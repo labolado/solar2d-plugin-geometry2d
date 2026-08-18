@@ -39,6 +39,7 @@ LOCAL_C_INCLUDES := $(POLYPARTITION_DIR) \
     $(EARCUT_DIR)
 
 LOCAL_SRC_FILES := $(SRC_DIR)/plugin_geometry2d.cpp \
+    $(SRC_DIR)/fringe.cpp \
     $(THIRD_PARTY)/polypartition/src/polypartition.cpp \
     $(THIRD_PARTY)/ByteReader/ByteReader.cpp
 

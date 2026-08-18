@@ -9,6 +9,33 @@ local PP = Geometry2D.polypartition
 local W, H   = display.contentWidth, display.contentHeight
 local CX, CY = display.contentCenterX, display.contentCenterY
 
+local inspect = require("inspect")
+local function _DUMP(...)
+    local obj, msg, options
+    local args = {...}
+    if #args == 1 then
+        obj = args[1]
+    elseif #args == 2 then
+        if type(args[1]) == 'string' then
+            --print(type(args[1]))
+            msg = args[1]
+            obj = args[2]
+        else
+            obj     = args[1]
+            options = args[2]
+        end
+    elseif #args == 3 then
+        msg = args[1]
+        obj = args[2]
+        options = args[3]
+    end
+
+    msg = msg or ""
+    options = options or {}
+    local data = inspect(obj, options)
+    print("[DUMP]" .. msg .. data)
+end
+
 -- -------------------------------------------------------------------
 -- Helpers
 -- -------------------------------------------------------------------
@@ -94,6 +121,19 @@ end
 -- Print a result summary
 local function PrintResult(name, count)
     print(("%-22s → %d polygons"):format(name, count))
+end
+
+-- Render a fringe mesh with the per-vertex AA alpha baked in via
+-- mesh:setFillVertexColor (the plugin precomputes `alphas` — the
+-- NanoVG AA gradient — no custom shader needed)
+local function FringeMesh(data, ox, oy, r, g, b)
+    local mesh = display.newMesh(data)
+    mesh.x, mesh.y = ox, oy
+    mesh:translate(mesh.path:getVertexOffset())
+    for i = 1, mesh.fillVertexCount do
+        mesh:setFillVertexColor(i, r, g, b, data.alphas[i])
+    end
+    return mesh
 end
 
 -- -------------------------------------------------------------------
@@ -422,6 +462,124 @@ do
     t:setFillColor(1, 1, 1)
 end
 --]]
+
+-- -------------------------------------------------------------------
+-- Test 16: fringe.fill — AA skirt for a holey polygon (NanoVG expandFill)
+-- -------------------------------------------------------------------
+do
+    local ox, oy = Pos(0, 4)
+
+    local outer = { 0,0,  100,0,  100,100,  0,100 }
+    local hole  = { 30,30,  70,30,  70,70,  30,70 }  -- CW hole
+
+    -- 1) Solid fill body underneath (earcut)
+    -- local solidMesh = Geometry2D.earcut.triangulate({
+    --     { 0,0,  100,0,  100,100,  0,100 },
+    --     { 30,30,  70,30,  70,70,  30,70 },
+    -- }, { mesh = true })
+    -- solidMesh.mode = "indexed"
+    -- local solid = display.newMesh(solidMesh)
+    -- solid.x, solid.y = ox, oy
+    -- solid:translate(solid.path:getVertexOffset())
+    -- solid:setFillColor(0.5, 0.5, 0.6, 1)
+
+    -- 2) Fringe skirt on top: u = 0 at the outline (opaque), 1 at 1px out
+    local skirt = Geometry2D.fringe.fill({
+        { points = outer, hole = false },
+        { points = hole,  hole = true },
+    }, { fringe = 3.0, join = "round", miterLimit = 2.4 })
+
+
+    PrintResult("fringe.fill(holey)", #skirt.indices / 3)
+    FringeMesh(skirt, ox, oy, 1, 1, 1)
+
+    -- OutlinePolygon(outer, ox, oy, 1, 1, 1)
+    -- OutlinePolygon(hole,  ox, oy, 1, 0.3, 0.3)
+
+    local t = display.newText({
+        text = "fringe.fill (AA skirt)", x = ox + 50, y = oy - 10,
+        fontSize = 10,
+    })
+    t:setFillColor(1, 1, 1)
+end
+
+-- -------------------------------------------------------------------
+-- Test 17: fringe.stroke — open polyline, round caps/joins
+-- -------------------------------------------------------------------
+do
+    local ox, oy = Pos(1, 4)
+
+    local polyline = { 0,0,  30,40,  70,10,  100,60 }
+    local skirt = Geometry2D.fringe.stroke(polyline, 4.0, {
+        fringe = 1.0, cap = "round", join = "round",
+    })
+
+    _DUMP("fringe.stroke(open)", skirt)
+    PrintResult("fringe.stroke(open)", #skirt.indices / 3)
+    FringeMesh(skirt, ox, oy, 0.3, 0.8, 1)
+
+    -- draw the source polyline on top for reference
+    local verts = {}
+    for i = 1, #polyline, 2 do
+        verts[#verts + 1] = polyline[i] + ox
+        verts[#verts + 1] = polyline[i + 1] + oy
+    end
+    local line = display.newLine(unpack(verts))
+    line:setStrokeColor(1, 0, 0)
+    line.strokeWidth = 1
+
+    local t = display.newText({
+        text = "fringe.stroke round", x = ox + 50, y = oy - 10,
+        fontSize = 10,
+    })
+    t:setFillColor(1, 1, 1)
+end
+
+-- -------------------------------------------------------------------
+-- Test 18: fringe.stroke — closed polygon, miter joins, butt caps
+-- -------------------------------------------------------------------
+do
+    local ox, oy = Pos(2, 4)
+
+    local star = { 52.5, 0, 67.5, 37.5, 105, 37.5, 75, 60, 90, 97.5, 52.5, 75, 15, 97.5, 30,
+        60, 0, 37.5, 37.5, 37.5 }
+    local skirt = Geometry2D.fringe.stroke(star, 3.0, {
+        fringe = 1.0, closed = true, join = "miter", miterLimit = 4.0,
+    })
+
+    _DUMP("fringe.stroke(closed)", skirt)
+    PrintResult("fringe.stroke(closed)", #skirt.indices / 3)
+    FringeMesh(skirt, ox, oy, 1, 0.6, 0.3)
+
+    -- OutlinePolygon(star, ox, oy, 1, 1, 1)
+
+    local t = display.newText({
+        text = "fringe.stroke closed", x = ox + 50, y = oy - 10,
+        fontSize = 10,
+    })
+    t:setFillColor(1, 1, 1)
+end
+
+-- -------------------------------------------------------------------
+-- Test 19: fringe.fill — bevel + round joins on a concave polygon
+-- -------------------------------------------------------------------
+do
+    local ox, oy = Pos(3, 4)
+
+    local lshape = { 0,0,  100,0,  100,40,  40,40,  40,100,  0,100 }
+    local skirt = Geometry2D.fringe.fill(lshape, { fringe = 15, join = "round" })
+
+    PrintResult("fringe.fill(round)", #skirt.indices / 3)
+    FringeMesh(skirt, ox, oy, 1, 1, 1)
+
+    OutlinePolygon(lshape, ox, oy, 1, 1, 1)
+
+    local t = display.newText({
+        text = "fringe.fill round", x = ox + 50, y = oy - 10,
+        fontSize = 10,
+    })
+    t:setFillColor(1, 1, 1)
+end
 
 -- -------------------------------------------------------------------
 -- Footer

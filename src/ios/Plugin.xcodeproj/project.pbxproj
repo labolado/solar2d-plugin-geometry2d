@@ -10,12 +10,14 @@
 		AA00000000000000000000B1 /* plugin_geometry2d.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* plugin_geometry2d.cpp */; };
 		AA00000000000000000000B2 /* polypartition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* polypartition.cpp */; };
 		AA00000000000000000000B3 /* ByteReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* ByteReader.cpp */; };
+		AA00000000000000000000B4 /* fringe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* fringe.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		AA00000000000000000000A1 /* plugin_geometry2d.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = plugin_geometry2d.cpp; path = ../shared/plugin_geometry2d.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000A2 /* polypartition.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = polypartition.cpp; path = ../../third_party/polypartition/src/polypartition.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000A3 /* ByteReader.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ByteReader.cpp; path = ../../third_party/ByteReader/ByteReader.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000000000000000000A4 /* fringe.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = fringe.cpp; path = ../shared/fringe.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000A0 /* libplugin_geometry2d.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libplugin_geometry2d.a; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -36,6 +38,7 @@
 				AA00000000000000000000A1 /* plugin_geometry2d.cpp */,
 				AA00000000000000000000A2 /* polypartition.cpp */,
 				AA00000000000000000000A3 /* ByteReader.cpp */,
+				AA00000000000000000000A4 /* fringe.cpp */,
 			);
 			name = shared;
 			sourceTree = "<group>";
@@ -110,6 +113,7 @@
 				AA00000000000000000000B1 /* plugin_geometry2d.cpp in Sources */,
 				AA00000000000000000000B2 /* polypartition.cpp in Sources */,
 				AA00000000000000000000B3 /* ByteReader.cpp in Sources */,
+				AA00000000000000000000B4 /* fringe.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

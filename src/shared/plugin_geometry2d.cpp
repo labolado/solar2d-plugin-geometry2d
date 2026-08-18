@@ -23,10 +23,12 @@
 
 #include "polypartition.h"
 #include "mapbox/earcut.hpp"
+#include "fringe.h"
 #include "utils/LuaEx.h"
 #define BR_NAMESPACE_PREFIX geometry2d_br
 #include "ByteReader.h"
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -609,6 +611,187 @@ static int EarcutTriangulate_fn(lua_State *L)
     return 1;
 }
 
+// ===========================================================================
+// fringe module — AA fringe (skirt) generation for display.newMesh
+// (adapted from NanoVG's nvg__expandFill / nvg__expandStroke)
+// ===========================================================================
+
+struct FringeOpts {
+    float fringe = 1.0f;
+    Fringe::LineJoin join = Fringe::JOIN_MITER;
+    float miterLimit = 2.4f;
+    float tessTol = 0.25f;
+    Fringe::LineCap cap = Fringe::CAP_BUTT;
+    bool closed = false;
+};
+
+static FringeOpts GetFringeOpts(lua_State *L, int arg)
+{
+    FringeOpts o;
+    if (!lua_istable(L, arg)) return o;
+
+    lua_getfield(L, arg, "fringe");                  // ..., opts, fringe?
+    if (lua_isnumber(L, -1)) o.fringe = (float)lua_tonumber(L, -1);
+    lua_pop(L, 1);                                   // ...
+
+    lua_getfield(L, arg, "join");                    // ..., opts, join?
+    if (lua_isstring(L, -1))
+    {
+        const char *j = lua_tostring(L, -1);
+        if (strcmp(j, "bevel") == 0) o.join = Fringe::JOIN_BEVEL;
+        else if (strcmp(j, "round") == 0) o.join = Fringe::JOIN_ROUND;
+    }
+    lua_pop(L, 1);                                   // ...
+
+    lua_getfield(L, arg, "cap");                     // ..., opts, cap?
+    if (lua_isstring(L, -1))
+    {
+        const char *c = lua_tostring(L, -1);
+        if (strcmp(c, "square") == 0) o.cap = Fringe::CAP_SQUARE;
+        else if (strcmp(c, "round") == 0) o.cap = Fringe::CAP_ROUND;
+    }
+    lua_pop(L, 1);                                   // ...
+
+    lua_getfield(L, arg, "miterLimit");              // ..., opts, miterLimit?
+    if (lua_isnumber(L, -1)) o.miterLimit = (float)lua_tonumber(L, -1);
+    lua_pop(L, 1);                                   // ...
+
+    lua_getfield(L, arg, "tessTol");                 // ..., opts, tessTol?
+    if (lua_isnumber(L, -1)) o.tessTol = (float)lua_tonumber(L, -1);
+    lua_pop(L, 1);                                   // ...
+
+    lua_getfield(L, arg, "closed");                  // ..., opts, closed?
+    if (lua_isboolean(L, -1)) o.closed = lua_toboolean(L, -1) != 0;
+    lua_pop(L, 1);                                   // ...
+
+    return o;
+}
+
+// Read rings into the vector-of-rings format that the fringe generator
+// expects. Accepts a flat table / bytes string (single ring) or a table of
+// rings (flat tables, bytes, or {points=..., hole=...} entries).
+static bool ReadFringeRings(lua_State *L, int arg,
+                            std::vector<std::vector<std::pair<float, float>>> &rings)
+{
+    if (lua_istable(L, arg))
+    {
+        if (IsFlatPolygonTable(L, arg))
+        {
+            TPPLPoly poly;
+            if (!ReadPolygon(L, arg, poly)) return false;
+            rings.resize(1);
+            for (long i = 0; i < poly.GetNumPoints(); ++i)
+                rings[0].push_back({(float)poly[i].x, (float)poly[i].y});
+            return true;
+        }
+
+        TPPLPolyList list;
+        if (!ReadPolygonList(L, arg, list)) return false;
+        rings.resize(list.size());
+        int ri = 0;
+        for (auto &poly : list)
+        {
+            for (long i = 0; i < poly.GetNumPoints(); ++i)
+                rings[ri].push_back({(float)poly[i].x, (float)poly[i].y});
+            ++ri;
+        }
+        return true;
+    }
+
+    TPPLPoly poly;
+    if (!ReadPolygon(L, arg, poly)) return false;
+    rings.resize(1);
+    for (long i = 0; i < poly.GetNumPoints(); ++i)
+        rings[0].push_back({(float)poly[i].x, (float)poly[i].y});
+    return true;
+}
+
+// Push {vertices={x1,y1,...}, uvs={u1,v1,...}, indices={1,2,3,...},
+//       alphas={a1,a2,...}, mode="indexed"} — ready for display.newMesh.
+// The alphas table holds the per-vertex alpha for mesh:setFillVertexColor
+// (precomputed by the fringe generator; linear vertex-color interpolation
+// reproduces the AA gradient without a custom shader).
+static void PushFringeMesh(lua_State *L, std::vector<Fringe::Vertex> &tris)
+{
+    int nv = (int)tris.size();
+    lua_createtable(L, 0, 5);                        // ..., mesh
+
+    // mesh.vertices = {x1, y1, x2, y2, ...}
+    lua_createtable(L, nv * 2, 0);                   // ..., mesh, vertices
+    for (int i = 0; i < nv; ++i)
+    {
+        lua_pushnumber(L, tris[i].x);
+        lua_rawseti(L, -2, i * 2 + 1);
+        lua_pushnumber(L, tris[i].y);
+        lua_rawseti(L, -2, i * 2 + 2);
+    }
+    lua_setfield(L, -2, "vertices");                 // ..., mesh
+
+    // mesh.uvs = {u1, v1, u2, v2, ...} — carries the AA gradient
+    lua_createtable(L, nv * 2, 0);                   // ..., mesh, uvs
+    for (int i = 0; i < nv; ++i)
+    {
+        lua_pushnumber(L, tris[i].u);
+        lua_rawseti(L, -2, i * 2 + 1);
+        lua_pushnumber(L, tris[i].v);
+        lua_rawseti(L, -2, i * 2 + 2);
+    }
+    lua_setfield(L, -2, "uvs");                      // ..., mesh
+
+    // mesh.indices = sequential 1-based triangle indices
+    lua_createtable(L, nv, 0);                       // ..., mesh, indices
+    for (int i = 0; i < nv; ++i)
+    {
+        lua_pushinteger(L, i + 1);
+        lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "indices");                  // ..., mesh
+
+    // mesh.alphas = per-vertex AA alpha for mesh:setFillVertexColor
+    lua_createtable(L, nv, 0);                       // ..., mesh, alphas
+    for (int i = 0; i < nv; ++i)
+    {
+        lua_pushnumber(L, tris[i].a);
+        lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "alphas");                   // ..., mesh
+
+    lua_pushstring(L, "indexed");                    // ..., mesh, "indexed"
+    lua_setfield(L, -2, "mode");                     // ..., mesh
+}
+
+static int FringeFill_fn(lua_State *L)
+{
+    std::vector<std::vector<std::pair<float, float>>> rings;
+    if (!ReadFringeRings(L, 1, rings))
+        return luaL_argerror(L, 1, "Expected polygon or polygon list");
+
+    FringeOpts o = GetFringeOpts(L, 2);
+
+    std::vector<Fringe::Vertex> tris;
+    Fringe::ExpandFill(rings, o.fringe, o.join, o.miterLimit, o.tessTol, tris);
+
+    PushFringeMesh(L, tris);
+    return 1;
+}
+
+static int FringeStroke_fn(lua_State *L)
+{
+    std::vector<std::vector<std::pair<float, float>>> rings;
+    if (!ReadFringeRings(L, 1, rings))
+        return luaL_argerror(L, 1, "Expected polyline or list of polylines");
+
+    float width = (float)luaL_checknumber(L, 2);
+
+    FringeOpts o = GetFringeOpts(L, 3);
+
+    std::vector<Fringe::Vertex> tris;
+    Fringe::ExpandStroke(rings, o.closed, width, o.fringe, o.cap, o.join, o.miterLimit, o.tessTol, tris);
+
+    PushFringeMesh(L, tris);
+    return 1;
+}
+
 // ---------------------------------------------------------------------------
 // Module entry point
 // ---------------------------------------------------------------------------
@@ -645,6 +828,18 @@ CORONA_EXPORT int luaopen_plugin_geometry2d(lua_State *L)
     luaL_register(L, nullptr, earcut_funcs);          // geometry2d, earcut
 
     lua_setfield(L, -2, "earcut");                    // geometry2d
+
+    // fringe sub-namespace — AA fringe skirts for display.newMesh
+    lua_newtable(L);                                  // geometry2d, fringe
+
+    luaL_Reg fringe_funcs[] = {
+        {"fill",   FringeFill_fn},
+        {"stroke", FringeStroke_fn},
+        {nullptr, nullptr}
+    };
+    luaL_register(L, nullptr, fringe_funcs);          // geometry2d, fringe
+
+    lua_setfield(L, -2, "fringe");                    // geometry2d
 
     return 1;
 }
