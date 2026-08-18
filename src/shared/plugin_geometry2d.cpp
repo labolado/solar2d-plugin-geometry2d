@@ -706,15 +706,16 @@ static bool ReadFringeRings(lua_State *L, int arg,
     return true;
 }
 
-// Push {vertices={x1,y1,...}, uvs={u1,v1,...}, indices={1,2,3,...},
-//       alphas={a1,a2,...}, mode="indexed"} — ready for display.newMesh.
+// Push {vertices={x1,y1,...}, alphas={a1,a2,...}, indices={1,2,3,...},
+//       mode="indexed"} — ready for display.newMesh.
 // The alphas table holds the per-vertex alpha for mesh:setFillVertexColor
 // (precomputed by the fringe generator; linear vertex-color interpolation
-// reproduces the AA gradient without a custom shader).
+// reproduces the AA gradient without a custom shader). No uvs — the fringe
+// u/v coordinates are internal (they end up baked into the alpha).
 static void PushFringeMesh(lua_State *L, std::vector<Fringe::Vertex> &tris)
 {
     int nv = (int)tris.size();
-    lua_createtable(L, 0, 5);                        // ..., mesh
+    lua_createtable(L, 0, 4);                        // ..., mesh
 
     // mesh.vertices = {x1, y1, x2, y2, ...}
     lua_createtable(L, nv * 2, 0);                   // ..., mesh, vertices
@@ -726,17 +727,6 @@ static void PushFringeMesh(lua_State *L, std::vector<Fringe::Vertex> &tris)
         lua_rawseti(L, -2, i * 2 + 2);
     }
     lua_setfield(L, -2, "vertices");                 // ..., mesh
-
-    // mesh.uvs = {u1, v1, u2, v2, ...} — carries the AA gradient
-    lua_createtable(L, nv * 2, 0);                   // ..., mesh, uvs
-    for (int i = 0; i < nv; ++i)
-    {
-        lua_pushnumber(L, tris[i].u);
-        lua_rawseti(L, -2, i * 2 + 1);
-        lua_pushnumber(L, tris[i].v);
-        lua_rawseti(L, -2, i * 2 + 2);
-    }
-    lua_setfield(L, -2, "uvs");                      // ..., mesh
 
     // mesh.indices = sequential 1-based triangle indices
     lua_createtable(L, nv, 0);                       // ..., mesh, indices

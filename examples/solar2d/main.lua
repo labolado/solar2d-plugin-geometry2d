@@ -473,21 +473,21 @@ do
     local hole  = { 30,30,  70,30,  70,70,  30,70 }  -- CW hole
 
     -- 1) Solid fill body underneath (earcut)
-    -- local solidMesh = Geometry2D.earcut.triangulate({
-    --     { 0,0,  100,0,  100,100,  0,100 },
-    --     { 30,30,  70,30,  70,70,  30,70 },
-    -- }, { mesh = true })
-    -- solidMesh.mode = "indexed"
-    -- local solid = display.newMesh(solidMesh)
-    -- solid.x, solid.y = ox, oy
-    -- solid:translate(solid.path:getVertexOffset())
+    local solidMesh = Geometry2D.earcut.triangulate({
+        outer,
+        hole,
+    }, { mesh = true })
+    solidMesh.mode = "indexed"
+    local solid = display.newMesh(solidMesh)
+    solid.x, solid.y = ox, oy
+    solid:translate(solid.path:getVertexOffset())
     -- solid:setFillColor(0.5, 0.5, 0.6, 1)
 
     -- 2) Fringe skirt on top: u = 0 at the outline (opaque), 1 at 1px out
     local skirt = Geometry2D.fringe.fill({
         { points = outer, hole = false },
         { points = hole,  hole = true },
-    }, { fringe = 3.0, join = "round", miterLimit = 2.4 })
+    }, { fringe = 3.0, join = "miter", miterLimit = 2.4 })
 
 
     PrintResult("fringe.fill(holey)", #skirt.indices / 3)
@@ -510,11 +510,11 @@ do
     local ox, oy = Pos(1, 4)
 
     local polyline = { 0,0,  30,40,  70,10,  100,60 }
-    local skirt = Geometry2D.fringe.stroke(polyline, 4.0, {
+    local skirt = Geometry2D.fringe.stroke(polyline, 10.0, {
         fringe = 1.0, cap = "round", join = "round",
     })
 
-    _DUMP("fringe.stroke(open)", skirt)
+    -- _DUMP("fringe.stroke(open)", skirt)
     PrintResult("fringe.stroke(open)", #skirt.indices / 3)
     FringeMesh(skirt, ox, oy, 0.3, 0.8, 1)
 
@@ -547,7 +547,7 @@ do
         fringe = 1.0, closed = true, join = "miter", miterLimit = 4.0,
     })
 
-    _DUMP("fringe.stroke(closed)", skirt)
+    -- _DUMP("fringe.stroke(closed)", skirt)
     PrintResult("fringe.stroke(closed)", #skirt.indices / 3)
     FringeMesh(skirt, ox, oy, 1, 0.6, 0.3)
 
@@ -572,7 +572,7 @@ do
     PrintResult("fringe.fill(round)", #skirt.indices / 3)
     FringeMesh(skirt, ox, oy, 1, 1, 1)
 
-    OutlinePolygon(lshape, ox, oy, 1, 1, 1)
+    -- OutlinePolygon(lshape, ox, oy, 1, 1, 1)
 
     local t = display.newText({
         text = "fringe.fill round", x = ox + 50, y = oy - 10,

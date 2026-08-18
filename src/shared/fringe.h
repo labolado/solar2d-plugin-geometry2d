@@ -9,10 +9,12 @@
 * so only the join/cap/fringe machinery was extracted.
 *
 * Output is a flat triangle list. Each vertex carries:
-*   (u, v) — NanoVG's fringe-gradient coordinates, kept for shader users
-*   a      — the per-vertex alpha, precomputed for mesh:setFillVertexColor
-*            (Solar2D meshes bake the AA gradient into vertex alpha; no
-*            custom shader needed)
+*   a — the per-vertex alpha, precomputed for mesh:setFillVertexColor
+*       (Solar2D meshes bake the AA gradient into vertex alpha; no
+*       custom shader needed)
+*   (u, v) are NanoVG's internal fringe-gradient coordinates — they are
+*   consumed while building the strip (v drives the cap fade, baked into a)
+*   and are NOT exposed to Lua.
 *
 * Stroke (banded adaptation of NanoVG's strip):
 *   The strip spans the stroke half-width + `fringe` pixels of AA skirt on
@@ -22,8 +24,6 @@
 *   exact AA ramp: solid core, linear fade over the skirt. (NanoVG itself
 *   computes this ramp per-pixel in its fragment shader, which is why its
 *   strip vertices cannot be vertex-color baked.)
-*   u = 0 / 1 at the skirt edges, core rows at uc = fringe/(2·(w/2+fringe));
-*   v = 0 at butt/square cap faces, 1 elsewhere.
 *
 * Fill (stencil-free adaptation):
 *   A one-sided skirt expanded OUTWARD from the fill region by `fringe`
@@ -33,7 +33,7 @@
 *   from each ring's OWN interior as given by its winding (signed
 *   shoelace area), so outer rings and holes both work without a hole
 *   flag. a = 1 on the path outline (opaque), 0 at the outer skirt
-*   edge (transparent). u = 0 / 1 likewise; v is always 1.
+*   edge (transparent).
 *
 * Coordinates are Solar2D display coordinates — y axis pointing DOWN
 * (screen space), the same space display.newMesh renders in. Positive
