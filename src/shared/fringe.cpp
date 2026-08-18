@@ -563,7 +563,7 @@ void ExpandStroke(const std::vector<std::vector<std::pair<float, float>>> &polyl
 // Fill fringe — one-sided outward skirt (stencil-free adaptation of
 // nvg__expandFill's fringe strip)
 // ===========================================================================
-void ExpandFill(const std::vector<std::vector<std::pair<float, float>>> &rings,
+void ExpandFill(const std::vector<FillRing> &rings,
                 float fringe, LineJoin join, float miterLimit, float tessTol,
                 std::vector<Vertex> &out)
 {
@@ -571,7 +571,7 @@ void ExpandFill(const std::vector<std::vector<std::pair<float, float>>> &rings,
 
     for (auto &ring : rings) {
         std::vector<Point> pts;
-        PreparePoints(ring, pts);
+        PreparePoints(ring.points, pts);
 
         size_t n = pts.size();
         if (n >= 3 && pts[0].x == pts[n - 1].x && pts[0].y == pts[n - 1].y) {
@@ -581,11 +581,21 @@ void ExpandFill(const std::vector<std::vector<std::pair<float, float>>> &rings,
         }
         if (n < 3) continue;
 
-        // The skirt extends away from the ring's own interior: positive
-        // area (clockwise on screen in Solar2D's y-down display space) uses
-        // the right normals (dy, -dx) as the outward side; negative area
-        // (holes) flips them.
-        float s = polyArea(pts.data(), (int)n) >= 0.0f ? 1.0f : -1.0f;
+        // Resolve the skirt side. The fill may lie on either side of a
+        // ring — inside it (outer) or outside it (hole) — so the ring's
+        // winding alone is not enough; an explicit hole flag wins, and
+        // without one the winding convention applies: positive shoelace
+        // (CW on screen) = outer, negative = hole.
+        float areaSign = polyArea(pts.data(), (int)n) >= 0.0f ? 1.0f : -1.0f;
+        int hole = ring.hole;
+        if (hole < 0) hole = areaSign < 0.0f ? 1 : 0;
+
+        // The right normals (dy, -dx) point away from a positive-area
+        // ring's interior and into a negative-area ring's interior.
+        // Skirt toward the non-fill side:
+        //   outer (fill inside)  → away from the interior
+        //   hole  (fill outside) → toward the interior
+        float s = areaSign * (hole ? -1.0f : 1.0f);
 
         // Per-vertex outward normals and miter directions. The outward
         // normals of both adjacent edges point into the exterior wedge, so

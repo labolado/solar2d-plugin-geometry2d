@@ -464,40 +464,31 @@ end
 --]]
 
 -- -------------------------------------------------------------------
--- Test 16: fringe.fill — AA skirt for a holey polygon (NanoVG expandFill)
+-- Test 16: util.meshFill — earcut body + fringe AA skirt in ONE mesh
 -- -------------------------------------------------------------------
 do
-    local ox, oy = Pos(0, 4)
+    local ox, oy = Pos(0, 3)
 
     local outer = { 0,0,  100,0,  100,100,  0,100 }
-    local hole  = { 30,30,  70,30,  70,70,  30,70 }  -- CW hole
+    local hole  = { 30,30,  30,70,  70,70,  70,30 }  -- CCW on screen (convention hole)
 
-    -- 1) Solid fill body underneath (earcut)
-    local solidMesh = Geometry2D.earcut.triangulate({
+    -- One call: solid earcut fill + AA fringe skirt, merged into a single
+    -- mesh. data.alphas = 1 on the body, fading 1→0 across the skirt.
+    -- local data = Geometry2D.fringe.fill({
+    local data = Geometry2D.util.meshFill({
         outer,
         hole,
-    }, { mesh = true })
-    solidMesh.mode = "indexed"
-    local solid = display.newMesh(solidMesh)
-    solid.x, solid.y = ox, oy
-    solid:translate(solid.path:getVertexOffset())
-    -- solid:setFillColor(0.5, 0.5, 0.6, 1)
-
-    -- 2) Fringe skirt on top: u = 0 at the outline (opaque), 1 at 1px out
-    local skirt = Geometry2D.fringe.fill({
-        { points = outer, hole = false },
-        { points = hole,  hole = true },
     }, { fringe = 3.0, join = "miter", miterLimit = 2.4 })
 
-
-    PrintResult("fringe.fill(holey)", #skirt.indices / 3)
-    FringeMesh(skirt, ox, oy, 1, 1, 1)
+    PrintResult("util.meshFill(holey)", #data.indices / 3)
+    local mesh = FringeMesh(data, ox, oy, 1, 1, 1)
+    mesh.rotation = 20
 
     -- OutlinePolygon(outer, ox, oy, 1, 1, 1)
     -- OutlinePolygon(hole,  ox, oy, 1, 0.3, 0.3)
 
     local t = display.newText({
-        text = "fringe.fill (AA skirt)", x = ox + 50, y = oy - 10,
+        text = "util.meshFill (body+skirt)", x = ox + 50, y = oy - 10,
         fontSize = 10,
     })
     t:setFillColor(1, 1, 1)
@@ -507,7 +498,7 @@ end
 -- Test 17: fringe.stroke — open polyline, round caps/joins
 -- -------------------------------------------------------------------
 do
-    local ox, oy = Pos(1, 4)
+    local ox, oy = Pos(1, 3)
 
     local polyline = { 0,0,  30,40,  70,10,  100,60 }
     local skirt = Geometry2D.fringe.stroke(polyline, 10.0, {
@@ -539,7 +530,7 @@ end
 -- Test 18: fringe.stroke — closed polygon, miter joins, butt caps
 -- -------------------------------------------------------------------
 do
-    local ox, oy = Pos(2, 4)
+    local ox, oy = Pos(2, 3)
 
     local star = { 52.5, 0, 67.5, 37.5, 105, 37.5, 75, 60, 90, 97.5, 52.5, 75, 15, 97.5, 30,
         60, 0, 37.5, 37.5, 37.5 }
@@ -564,7 +555,7 @@ end
 -- Test 19: fringe.fill — bevel + round joins on a concave polygon
 -- -------------------------------------------------------------------
 do
-    local ox, oy = Pos(3, 4)
+    local ox, oy = Pos(3, 3)
 
     local lshape = { 0,0,  100,0,  100,40,  40,40,  40,100,  0,100 }
     local skirt = Geometry2D.fringe.fill(lshape, { fringe = 15, join = "round" })
@@ -576,6 +567,30 @@ do
 
     local t = display.newText({
         text = "fringe.fill round", x = ox + 50, y = oy - 10,
+        fontSize = 10,
+    })
+    t:setFillColor(1, 1, 1)
+end
+
+-- -------------------------------------------------------------------
+-- Test 20: util.meshFill — star with a hole, round joins, Delaunay refine
+-- -------------------------------------------------------------------
+do
+    local ox, oy = Pos(0, 4)
+
+    local data = Geometry2D.util.meshFill({
+        { 52.5,0, 67.5,37.5, 105,37.5, 75,60, 90,97.5, 52.5,75, 15,97.5, 30,60, 0,37.5, 37.5,37.5 },
+        { 40,35, 40,60, 65,60, 65,35 },  -- CCW on screen (convention hole)
+    }, { fringe = 1.0, join = "round", refine = false })
+
+    PrintResult("util.meshFill(star)", #data.indices / 3)
+    local mesh = FringeMesh(data, ox, oy, 0.3, 0.9, 0.4)
+    mesh.rotation = 30
+
+    -- OutlinePolygon({ 52.5,0, 67.5,37.5, 105,37.5, 75,60, 90,97.5, 52.5,75, 15,97.5, 30,60, 0,37.5, 37.5,37.5 }, ox, oy, 1, 1, 1)
+
+    local t = display.newText({
+        text = "util.meshFill ★ hole", x = ox + 50, y = oy - 10,
         fontSize = 10,
     })
     t:setFillColor(1, 1, 1)

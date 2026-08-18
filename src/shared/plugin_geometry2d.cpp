@@ -667,42 +667,59 @@ static FringeOpts GetFringeOpts(lua_State *L, int arg)
     return o;
 }
 
-// Read rings into the vector-of-rings format that the fringe generator
-// expects. Accepts a flat table / bytes string (single ring) or a table of
-// rings (flat tables, bytes, or {points=..., hole=...} entries).
-static bool ReadFringeRings(lua_State *L, int arg,
-                            std::vector<std::vector<std::pair<float, float>>> &rings)
+// Read rings into the FillRing format that the fringe generator expects.
+// Accepts a flat table / bytes string (single ring) or a table of rings
+// (flat tables, bytes, or {points=..., hole=...} entries). Explicit
+// {points=..., hole=...} entries carry the hole semantics; bare rings fall
+// back to the winding convention (see Fringe::FillRing).
+static bool ReadFringeRings(lua_State *L, int arg, std::vector<Fringe::FillRing> &rings)
 {
-    if (lua_istable(L, arg))
+    if (!lua_istable(L, arg))
     {
-        if (IsFlatPolygonTable(L, arg))
-        {
-            TPPLPoly poly;
-            if (!ReadPolygon(L, arg, poly)) return false;
-            rings.resize(1);
-            for (long i = 0; i < poly.GetNumPoints(); ++i)
-                rings[0].push_back({(float)poly[i].x, (float)poly[i].y});
-            return true;
-        }
-
-        TPPLPolyList list;
-        if (!ReadPolygonList(L, arg, list)) return false;
-        rings.resize(list.size());
-        int ri = 0;
-        for (auto &poly : list)
-        {
-            for (long i = 0; i < poly.GetNumPoints(); ++i)
-                rings[ri].push_back({(float)poly[i].x, (float)poly[i].y});
-            ++ri;
-        }
+        // Bytes string → single ring, auto hole semantics
+        TPPLPoly poly;
+        if (!ReadPolygon(L, arg, poly)) return false;
+        rings.resize(1);
+        for (long i = 0; i < poly.GetNumPoints(); ++i)
+            rings[0].points.push_back({(float)poly[i].x, (float)poly[i].y});
         return true;
     }
 
-    TPPLPoly poly;
-    if (!ReadPolygon(L, arg, poly)) return false;
-    rings.resize(1);
-    for (long i = 0; i < poly.GetNumPoints(); ++i)
-        rings[0].push_back({(float)poly[i].x, (float)poly[i].y});
+    if (IsFlatPolygonTable(L, arg))
+    {
+        TPPLPoly poly;
+        if (!ReadPolygon(L, arg, poly)) return false;
+        rings.resize(1);
+        lua_getfield(L, arg, "points");              // ..., points?
+        rings[0].hole = lua_isnil(L, -1) ? -1 : (poly.IsHole() ? 1 : 0);
+        lua_pop(L, 1);                               // ...
+        for (long i = 0; i < poly.GetNumPoints(); ++i)
+            rings[0].points.push_back({(float)poly[i].x, (float)poly[i].y});
+        return true;
+    }
+
+    arg = CoronaLuaNormalize(L, arg);
+    size_t n = lua_objlen(L, arg);
+    for (size_t idx = 1; idx <= n; ++idx)
+    {
+        lua_rawgeti(L, arg, (int)idx);               // ..., elem
+        TPPLPoly poly;
+        if (!ReadPolygon(L, -1, poly))
+        {
+            lua_pop(L, 1);                           // ...
+            return false;
+        }
+        Fringe::FillRing ring;
+        // Explicit {points=..., hole=...} entries carry the hole semantics;
+        // bare rings fall back to the winding convention.
+        lua_getfield(L, -1, "points");               // ..., elem, points?
+        ring.hole = lua_isnil(L, -1) ? -1 : (poly.IsHole() ? 1 : 0);
+        lua_pop(L, 1);                               // ..., elem
+        for (long i = 0; i < poly.GetNumPoints(); ++i)
+            ring.points.push_back({(float)poly[i].x, (float)poly[i].y});
+        rings.push_back(std::move(ring));
+        lua_pop(L, 1);                               // ...
+    }
     return true;
 }
 
@@ -752,7 +769,7 @@ static void PushFringeMesh(lua_State *L, std::vector<Fringe::Vertex> &tris)
 
 static int FringeFill_fn(lua_State *L)
 {
-    std::vector<std::vector<std::pair<float, float>>> rings;
+    std::vector<Fringe::FillRing> rings;
     if (!ReadFringeRings(L, 1, rings))
         return luaL_argerror(L, 1, "Expected polygon or polygon list");
 
@@ -767,18 +784,141 @@ static int FringeFill_fn(lua_State *L)
 
 static int FringeStroke_fn(lua_State *L)
 {
-    std::vector<std::vector<std::pair<float, float>>> rings;
-    if (!ReadFringeRings(L, 1, rings))
+    std::vector<Fringe::FillRing> fillRings;
+    if (!ReadFringeRings(L, 1, fillRings))
         return luaL_argerror(L, 1, "Expected polyline or list of polylines");
 
     float width = (float)luaL_checknumber(L, 2);
 
     FringeOpts o = GetFringeOpts(L, 3);
 
+    // Strokes are two-sided — hole semantics don't apply; keep just the points.
+    std::vector<std::vector<std::pair<float, float>>> rings(fillRings.size());
+    for (size_t i = 0; i < fillRings.size(); ++i)
+        rings[i] = std::move(fillRings[i].points);
+
     std::vector<Fringe::Vertex> tris;
     Fringe::ExpandStroke(rings, o.closed, width, o.fringe, o.cap, o.join, o.miterLimit, o.tessTol, tris);
 
     PushFringeMesh(L, tris);
+    return 1;
+}
+
+// ===========================================================================
+// util module — composite helpers
+// ===========================================================================
+
+// Push the combined mesh of a meshFill result: the earcut body (shared
+// vertices, all alpha 1) followed by the fringe skirt triangles (alpha
+// gradient), with the skirt's indices offset past the body's vertices.
+static void PushMeshFillResult(lua_State *L, const std::vector<std::array<double, 2>> &coords,
+                               const std::vector<uint32_t> &bodyIdx,
+                               std::vector<Fringe::Vertex> &skirt)
+{
+    int nBody = (int)coords.size();
+    int nSkirt = (int)skirt.size();
+    int nTotal = nBody + nSkirt;
+
+    lua_createtable(L, 0, 4);                        // ..., mesh
+
+    // mesh.vertices: body vertices first, then the skirt's
+    lua_createtable(L, nTotal * 2, 0);               // ..., mesh, vertices
+    int vi = 0;
+    for (int i = 0; i < nBody; ++i)
+    {
+        lua_pushnumber(L, coords[i][0]);
+        lua_rawseti(L, -2, vi * 2 + 1);
+        lua_pushnumber(L, coords[i][1]);
+        lua_rawseti(L, -2, vi * 2 + 2);
+        ++vi;
+    }
+    for (int i = 0; i < nSkirt; ++i)
+    {
+        lua_pushnumber(L, skirt[i].x);
+        lua_rawseti(L, -2, vi * 2 + 1);
+        lua_pushnumber(L, skirt[i].y);
+        lua_rawseti(L, -2, vi * 2 + 2);
+        ++vi;
+    }
+    lua_setfield(L, -2, "vertices");                 // ..., mesh
+
+    // mesh.alphas: body is opaque, skirt carries the AA gradient
+    lua_createtable(L, nTotal, 0);                   // ..., mesh, alphas
+    for (int i = 0; i < nBody; ++i)
+    {
+        lua_pushnumber(L, 1);
+        lua_rawseti(L, -2, i + 1);
+    }
+    for (int i = 0; i < nSkirt; ++i)
+    {
+        lua_pushnumber(L, skirt[i].a);
+        lua_rawseti(L, -2, nBody + i + 1);
+    }
+    lua_setfield(L, -2, "alphas");                   // ..., mesh
+
+    // mesh.indices: earcut body triangles + the skirt's sequential indices
+    // offset past the body vertices.
+    int nIdx = (int)bodyIdx.size() + nSkirt;
+    lua_createtable(L, nIdx, 0);                     // ..., mesh, indices
+    int ii = 0;
+    for (auto idx : bodyIdx)
+    {
+        lua_pushinteger(L, (int)idx + 1);            // 0-based → 1-based
+        lua_rawseti(L, -2, ++ii);
+    }
+    for (int i = 0; i < nSkirt; ++i)
+    {
+        lua_pushinteger(L, nBody + i + 1);
+        lua_rawseti(L, -2, ++ii);
+    }
+    lua_setfield(L, -2, "indices");                  // ..., mesh
+
+    lua_pushstring(L, "indexed");                    // ..., mesh, "indexed"
+    lua_setfield(L, -2, "mode");                     // ..., mesh
+}
+
+// util.meshFill(poly, opts) — one mesh with the earcut-triangulated solid
+// fill plus the fringe AA skirt. Ready for display.newMesh +
+// setFillVertexColor with data.alphas.
+//   poly: flat table / polygon list / {poly=..., holes=...} (same formats
+//         as earcut.triangulate)
+//   opts: {fringe=1, join="miter", miterLimit=2.4, tessTol=0.25,
+//          refine=false}
+static int UtilMeshFill_fn(lua_State *L)
+{
+    std::vector<std::vector<std::array<double, 2>>> poly;
+    ReadEarcutPolygon(L, 1, poly);
+    if (poly.empty() || poly[0].size() < 3)
+        return luaL_argerror(L, 1, "Expected polygon with at least 3 vertices");
+
+    std::vector<std::array<double, 2>> coords;
+    FlattenEarcutCoords(poly, coords);
+    auto indices = mapbox::earcut<uint32_t>(poly);
+
+    FringeOpts o = GetFringeOpts(L, 2);
+
+    if (lua_istable(L, 2))
+    {
+        lua_getfield(L, 2, "refine");                // ..., opts, refine?
+        if (lua_toboolean(L, -1))
+            mapbox::refine<uint32_t>(indices, coords);
+        lua_pop(L, 1);                               // ...
+    }
+
+    std::vector<Fringe::FillRing> rings;
+    rings.reserve(poly.size());
+    for (auto &r : poly)
+    {
+        Fringe::FillRing ring;  // hole = -1: auto (winding convention)
+        ring.points.reserve(r.size());
+        for (auto &p : r)
+            ring.points.push_back({(float)p[0], (float)p[1]});
+        rings.push_back(std::move(ring));
+    }
+    std::vector<Fringe::Vertex> skirt;
+    Fringe::ExpandFill(rings, o.fringe, o.join, o.miterLimit, o.tessTol, skirt);
+
+    PushMeshFillResult(L, coords, indices, skirt);
     return 1;
 }
 
@@ -830,6 +970,17 @@ CORONA_EXPORT int luaopen_plugin_geometry2d(lua_State *L)
     luaL_register(L, nullptr, fringe_funcs);          // geometry2d, fringe
 
     lua_setfield(L, -2, "fringe");                    // geometry2d
+
+    // util sub-namespace — composite helpers
+    lua_newtable(L);                                  // geometry2d, util
+
+    luaL_Reg util_funcs[] = {
+        {"meshFill", UtilMeshFill_fn},
+        {nullptr, nullptr}
+    };
+    luaL_register(L, nullptr, util_funcs);            // geometry2d, util
+
+    lua_setfield(L, -2, "util");                      // geometry2d
 
     return 1;
 }
