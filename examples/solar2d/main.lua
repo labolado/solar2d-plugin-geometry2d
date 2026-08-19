@@ -597,6 +597,115 @@ do
 end
 
 -- -------------------------------------------------------------------
+-- Test 21: util.meshFillGroups — several shape groups merged into ONE mesh
+-- -------------------------------------------------------------------
+do
+    local ox, oy = Pos(1, 4)
+
+    local data = Geometry2D.util.meshFillGroups({
+        { -- group 1: square with a hole
+            { 0,0,  80,0,  80,80,  0,80 },
+            { 20,20,  20,60,  60,60,  60,20 },   -- CCW on screen (hole)
+        },
+        { -- group 2: a triangle (flat table works too)
+            90,0,  130,0,  110,40,
+        },
+        { -- group 3: a pentagon
+            { 0,90,  40,90,  50,110,  20,130,  -10,110 },
+        },
+    }, { fringe = 5.0, join = "round" })
+
+    PrintResult("util.meshFillGroups(3)", #data.indices / 3)
+    FringeMesh(data, ox, oy, 0.9, 0.6, 0.2)
+
+    local t = display.newText({
+        text = "util.meshFillGroups", x = ox + 50, y = oy - 10,
+        fontSize = 10,
+    })
+    t:setFillColor(1, 1, 1)
+end
+
+-- -------------------------------------------------------------------
+-- Test 22: util.meshSDF — signed-distance mesh for shader-based AA
+-- -------------------------------------------------------------------
+do
+    local ox, oy = Pos(2.2, 4)
+    local DISTANCE = 5
+
+    local data = Geometry2D.util.meshSDF({
+        { 0,0,  80,0,  80,80,  0,80 },
+        { 20,20,  20,60,  60,60,  60,20 },   -- CCW on screen (hole)
+    }, { distance = DISTANCE, join = "round" })
+
+    -- distance stats: 0 on the body, down to -distance at the band's outer edge
+    local dMin, dMax = math.huge, -math.huge
+    for i = 1, #data.distances do
+        dMin = math.min(dMin, data.distances[i])
+        dMax = math.max(dMax, data.distances[i])
+    end
+    PrintResult("util.meshSDF", #data.indices / 3)
+    print(("  distances: [%.1f .. %.1f]"):format(dMin, dMax))
+
+    -- Fallback rendering without a shader: linear vertex-alpha fade across
+    -- the band. The shader version replaces this with an exact 1px fwidth()
+    -- smoothstep ramp: alpha = 1 - smoothstep(-fwidth(d), 0, d).
+    local mesh = display.newMesh(data)
+    mesh.x, mesh.y = ox, oy
+    mesh:translate(mesh.path:getVertexOffset())
+    for i = 1, mesh.fillVertexCount do
+        mesh:setFillVertexColor(i, 0.9, 0.5, 0.9, 1 + data.distances[i] / DISTANCE)
+    end
+
+    local t = display.newText({
+        text = "util.meshSDF", x = ox + 50, y = oy - 10,
+        fontSize = 10,
+    })
+    t:setFillColor(1, 1, 1)
+end
+
+-- -------------------------------------------------------------------
+-- Test 23: util.meshSDFGroups — several SDF shape groups in ONE mesh
+-- -------------------------------------------------------------------
+do
+    local ox, oy = Pos(3, 4)
+    local DISTANCE = 5
+
+    local data = Geometry2D.util.meshSDFGroups({
+        { -- group 1: square with a hole
+            { 0,0,  80,0,  80,80,  0,80 },
+            { 20,20,  20,60,  60,60,  60,20 },   -- CCW on screen (hole)
+        },
+        { -- group 2: a triangle
+            90,0,  130,0,  110,40,
+        },
+        { -- group 3: a pentagon
+            { 0,90,  40,90,  50,110,  20,130,  -10,110 },
+        },
+    }, { distance = DISTANCE, join = "round" })
+
+    local dMin, dMax = math.huge, -math.huge
+    for i = 1, #data.distances do
+        dMin = math.min(dMin, data.distances[i])
+        dMax = math.max(dMax, data.distances[i])
+    end
+    PrintResult("util.meshSDFGroups(3)", #data.indices / 3)
+    print(("  distances: [%.1f .. %.1f]"):format(dMin, dMax))
+
+    local mesh = display.newMesh(data)
+    mesh.x, mesh.y = ox, oy
+    mesh:translate(mesh.path:getVertexOffset())
+    for i = 1, mesh.fillVertexCount do
+        mesh:setFillVertexColor(i, 0.4, 0.7, 0.9, 1 + data.distances[i] / DISTANCE)
+    end
+
+    local t = display.newText({
+        text = "util.meshSDFGroups", x = ox + 50, y = oy - 10,
+        fontSize = 10,
+    })
+    t:setFillColor(1, 1, 1)
+end
+
+-- -------------------------------------------------------------------
 -- Footer
 -- -------------------------------------------------------------------
 local instructions = display.newText({
