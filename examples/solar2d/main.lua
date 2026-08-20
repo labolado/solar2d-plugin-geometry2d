@@ -637,7 +637,8 @@ do
         { 20,20,  20,60,  60,60,  60,20 },   -- CCW on screen (hole)
     }, { distance = DISTANCE, join = "round" })
 
-    -- distance stats: 0 on the body, down to -distance at the band's outer edge
+    -- distance stats: 0 on the boundary and across the body (the AA ramp
+    -- clamps to alpha 1 for d >= 0), down to -distance at the band's outer edge
     local dMin, dMax = math.huge, -math.huge
     for i = 1, #data.distances do
         dMin = math.min(dMin, data.distances[i])
@@ -681,14 +682,14 @@ do
         { -- group 3: a pentagon
             { 0,90,  40,90,  50,110,  20,130,  -10,110 },
         },
-    }, { distance = DISTANCE, join = "round" })
+    }, { distance = DISTANCE, join = "round", mode = "triangles" })
 
     local dMin, dMax = math.huge, -math.huge
     for i = 1, #data.distances do
         dMin = math.min(dMin, data.distances[i])
         dMax = math.max(dMax, data.distances[i])
     end
-    PrintResult("util.meshSDFGroups(3)", #data.indices / 3)
+    PrintResult("util.meshSDFGroups(3)", #data.vertices / 6)
     print(("  distances: [%.1f .. %.1f]"):format(dMin, dMax))
 
     local mesh = display.newMesh(data)
@@ -700,6 +701,30 @@ do
 
     local t = display.newText({
         text = "util.meshSDFGroups", x = ox + 50, y = oy - 10,
+        fontSize = 10,
+    })
+    t:setFillColor(1, 1, 1)
+end
+
+-- -------------------------------------------------------------------
+-- Test 24: util.meshFill with mode="triangles" — raw triangle list
+-- -------------------------------------------------------------------
+do
+    local ox, oy = Pos(4.2, 4)
+
+    local data = Geometry2D.util.meshFill({
+        { 0,0,  80,0,  80,80,  0,80 },
+        { 20,20,  20,60,  60,60,  60,20 },
+    }, { fringe = 5.0, mode = "triangles", join = "round" })
+
+    PrintResult("util.meshFill(triangles)", #data.vertices / 6)
+    print(("  mode=%s, indices=%s, #vertices=%d"):format(
+        data.mode, data.indices and "present" or "absent", #data.vertices / 2))
+
+    FringeMesh(data, ox, oy, 0.8, 0.3, 0.3)
+
+    local t = display.newText({
+        text = "util.meshFill triangles", x = ox + 50, y = oy - 10,
         fontSize = 10,
     })
     t:setFillColor(1, 1, 1)

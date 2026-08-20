@@ -809,33 +809,57 @@ static int FringeStroke_fn(lua_State *L)
 // ===========================================================================
 
 // Push the combined mesh of a body + fringe skirt result: the earcut body
-// (shared vertices) followed by the skirt triangles (sequential indices
-// offset past the body's vertices), plus the per-vertex value field:
+// plus the skirt triangles, with the per-vertex value field:
 //   sdfMode = false → mesh.alphas   (body 1, skirt = the AA gradient)
 //   sdfMode = true  → mesh.distances (body 0, skirt = -distance * u)
 //                    u = 0 on the boundary → 0, u = 1 at the skirt edge
 //                    → -distance (negative outside, per the SDF convention)
+// Two mesh layouts:
+//   indexed   (default): the body is a shared vertex pool + 1-based
+//              indices; the skirt appends with offset sequential indices.
+//   triangles: a raw triangle list — 3 standalone vertices per triangle,
+//              no indices table; mode = "triangles" (Geometry::kTriangles).
 static void PushMeshResult(lua_State *L, const std::vector<std::array<double, 2>> &coords,
                            const std::vector<uint32_t> &bodyIdx,
                            std::vector<Fringe::Vertex> &skirt,
-                           bool sdfMode, float distance)
+                           bool sdfMode, float distance, bool trianglesMode)
 {
     int nBody = (int)coords.size();
     int nSkirt = (int)skirt.size();
-    int nTotal = nBody + nSkirt;
+    int nBodyTri = (int)bodyIdx.size() / 3;
+    int nTotal = trianglesMode ? nBodyTri * 3 + nSkirt : nBody + nSkirt;
 
     lua_createtable(L, 0, 4);                        // ..., mesh
 
-    // mesh.vertices: body vertices first, then the skirt's
+    // mesh.vertices
     lua_createtable(L, nTotal * 2, 0);               // ..., mesh, vertices
     int vi = 0;
-    for (int i = 0; i < nBody; ++i)
+    if (trianglesMode)
     {
-        lua_pushnumber(L, coords[i][0]);
-        lua_rawseti(L, -2, vi * 2 + 1);
-        lua_pushnumber(L, coords[i][1]);
-        lua_rawseti(L, -2, vi * 2 + 2);
-        ++vi;
+        // Unpack the body triangles into standalone vertices.
+        for (int t = 0; t < nBodyTri; ++t)
+        {
+            for (int v = 0; v < 3; ++v)
+            {
+                const std::array<double, 2> &p = coords[bodyIdx[t * 3 + v]];
+                lua_pushnumber(L, p[0]);
+                lua_rawseti(L, -2, vi * 2 + 1);
+                lua_pushnumber(L, p[1]);
+                lua_rawseti(L, -2, vi * 2 + 2);
+                ++vi;
+            }
+        }
+    }
+    else
+    {
+        for (int i = 0; i < nBody; ++i)
+        {
+            lua_pushnumber(L, coords[i][0]);
+            lua_rawseti(L, -2, vi * 2 + 1);
+            lua_pushnumber(L, coords[i][1]);
+            lua_rawseti(L, -2, vi * 2 + 2);
+            ++vi;
+        }
     }
     for (int i = 0; i < nSkirt; ++i)
     {
@@ -847,59 +871,67 @@ static void PushMeshResult(lua_State *L, const std::vector<std::array<double, 2>
     }
     lua_setfield(L, -2, "vertices");                 // ..., mesh
 
-    if (sdfMode)
+    // mesh.alphas / mesh.distances — one value per output vertex.
+    // SDF body values are 0: the body sits on the boundary rings.
+    lua_createtable(L, nTotal, 0);                   // ..., mesh, values
+    int di = 0;
+    if (trianglesMode)
     {
-        // mesh.distances: signed distance to the boundary (0 inside, the
-        // body sits on the boundary rings), negative across the skirt.
-        lua_createtable(L, nTotal, 0);               // ..., mesh, distances
-        for (int i = 0; i < nBody; ++i)
-        {
-            lua_pushnumber(L, 0);
-            lua_rawseti(L, -2, i + 1);
-        }
-        for (int i = 0; i < nSkirt; ++i)
-        {
-            lua_pushnumber(L, -distance * skirt[i].u);
-            lua_rawseti(L, -2, nBody + i + 1);
-        }
-        lua_setfield(L, -2, "distances");            // ..., mesh
+        for (int t = 0; t < nBodyTri; ++t)
+            for (int v = 0; v < 3; ++v)
+            {
+                lua_pushnumber(L, sdfMode ? 0 : 1);
+                lua_rawseti(L, -2, ++di);
+            }
     }
     else
     {
-        // mesh.alphas: body is opaque, skirt carries the AA gradient
-        lua_createtable(L, nTotal, 0);               // ..., mesh, alphas
         for (int i = 0; i < nBody; ++i)
         {
-            lua_pushnumber(L, 1);
-            lua_rawseti(L, -2, i + 1);
+            lua_pushnumber(L, sdfMode ? 0 : 1);
+            lua_rawseti(L, -2, ++di);
         }
-        for (int i = 0; i < nSkirt; ++i)
-        {
-            lua_pushnumber(L, skirt[i].a);
-            lua_rawseti(L, -2, nBody + i + 1);
-        }
-        lua_setfield(L, -2, "alphas");               // ..., mesh
-    }
-
-    // mesh.indices: earcut body triangles + the skirt's sequential indices
-    // offset past the body vertices.
-    int nIdx = (int)bodyIdx.size() + nSkirt;
-    lua_createtable(L, nIdx, 0);                     // ..., mesh, indices
-    int ii = 0;
-    for (auto idx : bodyIdx)
-    {
-        lua_pushinteger(L, (int)idx + 1);            // 0-based → 1-based
-        lua_rawseti(L, -2, ++ii);
     }
     for (int i = 0; i < nSkirt; ++i)
     {
-        lua_pushinteger(L, nBody + i + 1);
-        lua_rawseti(L, -2, ++ii);
+        lua_pushnumber(L, sdfMode ? -distance * skirt[i].u : skirt[i].a);
+        lua_rawseti(L, -2, ++di);
     }
-    lua_setfield(L, -2, "indices");                  // ..., mesh
+    lua_setfield(L, -2, sdfMode ? "distances" : "alphas");  // ..., mesh
 
-    lua_pushstring(L, "indexed");                    // ..., mesh, "indexed"
+    if (!trianglesMode)
+    {
+        // mesh.indices: earcut body triangles + the skirt's sequential
+        // indices offset past the body vertices.
+        int nIdx = (int)bodyIdx.size() + nSkirt;
+        lua_createtable(L, nIdx, 0);                 // ..., mesh, indices
+        int ii = 0;
+        for (auto idx : bodyIdx)
+        {
+            lua_pushinteger(L, (int)idx + 1);        // 0-based → 1-based
+            lua_rawseti(L, -2, ++ii);
+        }
+        for (int i = 0; i < nSkirt; ++i)
+        {
+            lua_pushinteger(L, nBody + i + 1);
+            lua_rawseti(L, -2, ++ii);
+        }
+        lua_setfield(L, -2, "indices");              // ..., mesh
+    }
+
+    lua_pushstring(L, trianglesMode ? "triangles" : "indexed");
     lua_setfield(L, -2, "mode");                     // ..., mesh
+}
+
+// opts.mode — "indexed" (default: shared vertex pool + indices) or
+// "triangles" (raw triangle list, no indices table).
+static bool GetMeshTrianglesOpt(lua_State *L, int arg)
+{
+    if (!lua_istable(L, arg)) return false;
+    lua_getfield(L, arg, "mode");                    // ..., opts, mode?
+    bool triangles = lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "triangles") == 0;
+    lua_pop(L, 1);                                   // ...
+    return triangles;
 }
 
 // Core of meshFill for ONE polygon group at stack position `arg`: earcut
@@ -979,7 +1011,7 @@ static int UtilMeshFill_fn(lua_State *L)
     if (!MeshFillGroup(L, 1, o, GetRefineOpt(L, 2), o.fringe, coords, indices, skirt))
         return luaL_argerror(L, 1, "Expected polygon with at least 3 vertices");
 
-    PushMeshResult(L, coords, indices, skirt, false, 0.0f);
+    PushMeshResult(L, coords, indices, skirt, false, 0.0f, GetMeshTrianglesOpt(L, 2));
     return 1;
 }
 
@@ -1011,7 +1043,7 @@ static int UtilMeshFillGroups_fn(lua_State *L)
         lua_pop(L, 1);                               // ...
     }
 
-    PushMeshResult(L, coords, indices, skirt, false, 0.0f);
+    PushMeshResult(L, coords, indices, skirt, false, 0.0f, GetMeshTrianglesOpt(L, 2));
     return 1;
 }
 
@@ -1026,7 +1058,6 @@ static int UtilMeshSDFGroups_fn(lua_State *L)
     FringeOpts o = GetFringeOpts(L, 2);
     bool refine = GetRefineOpt(L, 2);
     float distance = GetDistanceOpt(L, 2);
-
     std::vector<std::array<double, 2>> coords;
     std::vector<uint32_t> indices;
     std::vector<Fringe::Vertex> skirt;
@@ -1044,55 +1075,34 @@ static int UtilMeshSDFGroups_fn(lua_State *L)
         lua_pop(L, 1);                               // ...
     }
 
-    PushMeshResult(L, coords, indices, skirt, true, distance);
+    PushMeshResult(L, coords, indices, skirt, true, distance, GetMeshTrianglesOpt(L, 2));
     return 1;
 }
 
 // util.meshSDF(poly, opts) — signed-distance-field mesh for shader-based AA
 // (screen-space dFdx/dFdy): the earcut body plus an outward band of width
 // `distance` (default 5) whose vertices carry their signed distance from
-// the boundary in mesh.distances — 0 on the boundary and across the body,
-// negative across the band down to -distance at its outer edge. A fragment
-// shader uses fwidth() on the interpolated distance to draw an exact 1px
-// smoothstep ramp, independent of the mesh resolution.
+// the boundary in mesh.distances — 0 on the boundary and across the body
+// (the AA ramp clamps to alpha 1 for every d >= 0, so interior values are
+// unnecessary), negative across the band down to -distance at its outer
+// edge. A fragment shader uses fwidth() on the interpolated distance to
+// draw an exact 1px smoothstep ramp, independent of the mesh resolution.
 //   opts: {distance=5, join="miter", miterLimit=2.4, tessTol=0.25,
-//          refine=false}
+//          refine=false, mode="indexed"|"triangles"}
 static int UtilMeshSDF_fn(lua_State *L)
 {
-    std::vector<std::vector<std::array<double, 2>>> poly;
-    ReadEarcutPolygon(L, 1, poly);
-    if (poly.empty() || poly[0].size() < 3)
-        return luaL_argerror(L, 1, "Expected polygon with at least 3 vertices");
-
     FringeOpts o = GetFringeOpts(L, 2);
 
     // Safe outward distance: opts.distance, default 5.
     float distance = GetDistanceOpt(L, 2);
 
-    // Body: earcut triangles (all vertices lie on the boundary rings —
-    // distances are 0).
     std::vector<std::array<double, 2>> coords;
-    FlattenEarcutCoords(poly, coords);
-    auto indices = mapbox::earcut<uint32_t>(poly);
-    if (GetRefineOpt(L, 2)) mapbox::refine<uint32_t>(indices, coords);
-
-    // Band: the fringe skirt with width = distance. The skirt's u is 0 on
-    // the boundary and 1 at the outer edge, so the vertex distance is
-    // -distance * u (see PushMeshResult).
-    std::vector<Fringe::FillRing> rings;
-    rings.reserve(poly.size());
-    for (auto &r : poly)
-    {
-        Fringe::FillRing ring;  // hole = -1: auto (winding convention)
-        ring.points.reserve(r.size());
-        for (auto &p : r)
-            ring.points.push_back({(float)p[0], (float)p[1]});
-        rings.push_back(std::move(ring));
-    }
+    std::vector<uint32_t> indices;
     std::vector<Fringe::Vertex> skirt;
-    Fringe::ExpandFill(rings, distance, o.join, o.miterLimit, o.tessTol, skirt);
+    if (!MeshFillGroup(L, 1, o, GetRefineOpt(L, 2), distance, coords, indices, skirt))
+        return luaL_argerror(L, 1, "Expected polygon with at least 3 vertices");
 
-    PushMeshResult(L, coords, indices, skirt, true, distance);
+    PushMeshResult(L, coords, indices, skirt, true, distance, GetMeshTrianglesOpt(L, 2));
     return 1;
 }
 
