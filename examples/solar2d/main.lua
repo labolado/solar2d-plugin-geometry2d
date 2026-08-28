@@ -3,6 +3,11 @@
 --
 display.setStatusBar(display.HiddenStatusBar)
 
+-- local sph = require("sph")
+-- sph.setScale(1)
+-- sph.setMode(2)
+-- sph.x = 1024
+
 local Geometry2D = require("plugin.geometry2d")
 local PP = Geometry2D.polypartition
 
@@ -351,6 +356,40 @@ do
     DrawResult(result, ox, oy, "MonotonePartition")
 end
 
+-- Expected geometry failures return nil + message, without requiring pcall.
+do
+    local function expectGeometryFailure(label, fn, ...)
+        local ok, result, err = pcall(fn, ...)
+        assert(ok, label .. " unexpectedly raised: " .. tostring(result))
+        assert(result == nil and type(err) == "string" and #err > 0,
+            label .. " did not return nil + message")
+    end
+
+    expectGeometryFailure("polypartition", PP.triangulate_EC,
+        {0,0, 10,0, 20,0, 30,0})
+    expectGeometryFailure("earcut", Geometry2D.earcut.triangulate,
+        {0,0, 10,0, 20,0})
+    expectGeometryFailure("fringe", Geometry2D.fringe.fill,
+        {0,0, 10,0, 0,10}, {fringe = 0})
+    expectGeometryFailure("util", Geometry2D.util.meshFill,
+        {0,0, 10,0, 20,0})
+    expectGeometryFailure("path fill", Geometry2D.path.meshFill, {
+        {"M", 0, 0}, {"L", 0, 10}, {"L", 10, 0}, {"Z"},
+    })
+    expectGeometryFailure("path stroke", Geometry2D.path.meshStroke,
+        {{"M", 0, 0}}, 5)
+    expectGeometryFailure("path point limit", Geometry2D.path.flatten, {
+        {"M", 0, 0}, {"L", 10, 0}, {"L", 20, 0}, {"L", 30, 0},
+    }, {maxCurvePoints = 3})
+
+    local newMesh = display.newMesh
+    display.newMesh = function() error("forced display.newMesh failure", 0) end
+    expectGeometryFailure("direct mesh", Geometry2D.util.meshFill,
+        {0,0, 10,0, 0,10}, {output = "mesh"})
+    display.newMesh = newMesh
+    print("Geometry failure result contract: ok")
+end
+
 -- -------------------------------------------------------------------
 -- Test 13: earcut — single polygon with hole (native hole support)
 -- -------------------------------------------------------------------
@@ -379,13 +418,12 @@ do
     local meshData = Geometry2D.earcut.triangulate({
         { 0,0,  100,0,  100,100,  0,100 },
         { 30,30,  70,30,  70,70,  30,70 },
-    }, { mesh = true })
+    }, { result = "indexed" })
 
     PrintResult("earcut(mesh holey)", #meshData.indices / 3)
     OutlinePolygon({0,0, 100,0, 100,100, 0,100}, ox, oy, 1, 1, 1)
     OutlinePolygon({30,30, 70,30, 70,70, 30,70}, ox, oy, 1, 0.3, 0.3)
 
-    meshData.mode = "indexed"
     local mesh = display.newMesh(meshData)
     mesh.x, mesh.y = ox, oy
     mesh:translate(mesh.path:getVertexOffset())
@@ -398,6 +436,28 @@ do
         fontSize = 10,
     })
     t:setFillColor(1, 1, 1)
+
+    local packedTriangle = string.char(
+        0,0,0,0, 0,0,0,0,
+        0,0,200,66, 0,0,0,0,
+        0,0,0,0, 0,0,200,66
+    )
+    local packedResult = Geometry2D.earcut.triangulate({
+        bytes = packedTriangle,
+        type = "float32",
+    })
+    assert(#packedResult == 1)
+    local triangleBuffers = Geometry2D.util.meshFill(
+        {0,0, 10,0, 0,10}, {fringe = 0, output = "buffers"})
+    local memoryResult = Geometry2D.earcut.triangulate({
+        bytes = triangleBuffers.vertices.buffer,
+        type = "float32",
+    })
+    assert(#memoryResult == 1)
+    local ok, err = pcall(Geometry2D.earcut.triangulate, packedTriangle)
+    assert(not ok and err:find("Expected polygon", 1, true))
+    ok, err = pcall(Geometry2D.earcut.triangulate, {0,0, 10,0, 0,10}, {mesh = true})
+    assert(not ok and err:find("result='indexed'", 1, true))
 end
 
 --[[
@@ -445,7 +505,7 @@ do
             {-161, -61, -220, -79, -221, -49},
             {-168, 212, -136, 267, -119, 243, -120, 209}
         }
-    }, { mesh = true })
+    }, { result = "indexed" })
 
     meshData.mode = "indexed"
     local mesh = display.newMesh(meshData)
@@ -728,6 +788,137 @@ do
         fontSize = 10,
     })
     t:setFillColor(1, 1, 1)
+end
+
+-- -------------------------------------------------------------------
+-- Test 25: Bezier path flattening + table/buffer/direct-mesh outputs
+-- -------------------------------------------------------------------
+do
+    local bezier = {
+        {"M", 0, 0},
+        {"L", 80, 0},
+        {"Q", 120, 40, 80, 80},
+        {"C", 55, 105, 25, 105, 0, 80},
+        {"Z"},
+    }
+
+    local contours = Geometry2D.path.flatten(bezier, {tessTol = 0.25})
+    assert(#contours == 1 and contours[1].closed)
+    assert(#contours[1].points > 8)
+    local coarse = Geometry2D.path.flatten(bezier, {tessTol = 4})
+    local fine = Geometry2D.path.flatten(bezier, {tessTol = 0.05})
+    assert(#fine[1].points > #coarse[1].points)
+
+    local holeFill = Geometry2D.path.meshFill({
+        {"M", 0, 0}, {"L", 100, 0}, {"L", 100, 100}, {"L", 0, 100}, {"Z"},
+        {"M", 30, 30}, {"L", 30, 70}, {"L", 70, 70}, {"L", 70, 30}, {"Z"},
+    })
+    assert(#holeFill.indices > 0 and #holeFill.alphas == #holeFill.vertices / 2)
+
+    local tableData = Geometry2D.path.meshSDF(bezier, {
+        distance = 5,
+        distanceSign = "outsidePositive",
+        mode = "triangles",
+    })
+    assert(tableData.indices == nil and #tableData.vertices % 6 == 0)
+    for i = 1, #tableData.distances do
+        assert(tableData.distances[i] >= 0)
+    end
+
+    local bufferData = Geometry2D.path.meshSDF(bezier, {
+        distance = 5,
+        output = "buffers",
+        distanceSign = "outsidePositive",
+    })
+    assert(bufferData.vertices.buffer and bufferData.distances.buffer)
+    assert(bufferData.uvs == nil)
+    assert(bufferData.vertices.count == bufferData.distances.count)
+    local bufferMesh = display.newMesh(bufferData)
+    assert(bufferMesh.fillVertexCount == bufferData.vertices.count)
+
+    local legacyBufferData = Geometry2D.path.meshSDF(bezier, {
+        output = "buffers",
+        legacyUVs = true,
+    })
+    assert(legacyBufferData.uvs.buffer)
+
+    local ok, err = pcall(Geometry2D.path.meshStroke, bezier, 8, {joint = "round"})
+    assert(not ok and err:find("use 'join'", 1, true))
+    ok, err = pcall(Geometry2D.path.meshSDF, bezier, {legacyUVs = true})
+    assert(not ok and err:find("requires output", 1, true))
+    ok, err = pcall(Geometry2D.path.flatten, {{"m", 0, 0}})
+    assert(not ok and err:find("Relative path command", 1, true))
+
+    graphics.defineVertexExtension({
+        name = "Geometry2DExampleData",
+        {name = "geom", type = "float", componentCount = 4},
+    })
+    bufferMesh.fillExtension = "Geometry2DExampleData"
+    local frames = 0
+    local function writePackedDistances()
+        frames = frames + 1
+        if frames < 2 then return end
+        Runtime:removeEventListener("enterFrame", writePackedDistances)
+        bufferMesh.fillExtendedData:setAttributeValues("geom", bufferData.distances)
+        bufferMesh:removeSelf()
+        print("Packed distance bulk update after geometry creation: ok")
+    end
+    Runtime:addEventListener("enterFrame", writePackedDistances)
+
+    local directMesh, attributes = Geometry2D.path.meshSDF(bezier, {
+        distance = 5,
+        output = "mesh",
+        distanceSign = "outsidePositive",
+    })
+    assert(directMesh.fillVertexCount == attributes.vertexCount)
+    assert(attributes.distances.componentCount == 1)
+    directMesh:removeSelf()
+
+    local strokeData = Geometry2D.path.meshStroke({
+        {"M", 0, 0}, {"C", 20, -30, 80, 30, 100, 0},
+    }, 8, {output = "buffers", cap = "round", join = "round"})
+    assert(strokeData.vertices.count == strokeData.alphas.count)
+    local strokeMesh = display.newMesh(strokeData)
+    strokeMesh:removeSelf()
+
+    local straightPath = {{"M", 0, 0}, {"L", 100, 0}}
+    local solidStroke = Geometry2D.path.meshStroke(straightPath, 8, {
+        fringe = 0, cap = "butt", mode = "triangles",
+    })
+    local dashedStroke = Geometry2D.path.meshStroke(straightPath, 8, {
+        fringe = 0, cap = "butt", mode = "triangles",
+        dashPattern = {10, 10},
+    })
+    assert(#solidStroke.alphas == 18)
+    assert(#dashedStroke.alphas == #solidStroke.alphas * 5)
+
+    local oddOffsetStroke = Geometry2D.path.meshStroke(bezier, 8, {
+        mode = "triangles", cap = "round",
+        dashPattern = {12, 5, 3}, dashOffset = -7,
+    })
+    assert(#oddOffsetStroke.alphas > 0)
+
+    local closedDash = Geometry2D.path.meshStroke({
+        {"M", 0, 0}, {"L", 100, 0}, {"L", 100, 100},
+        {"L", 0, 100}, {"Z"},
+    }, 8, {
+        mode = "triangles", cap = "round", join = "round",
+        dashPattern = {250, 50},
+    })
+    assert(#closedDash.alphas > 0)
+
+    local limited, limitError = Geometry2D.path.meshStroke(straightPath, 8, {
+        dashPattern = {10, 10}, maxDashSegments = 2,
+    })
+    assert(limited == nil and limitError:find("maxDashSegments", 1, true))
+    ok, err = pcall(Geometry2D.path.meshStroke, straightPath, 8, {
+        dashPattern = {10, 0},
+    })
+    assert(not ok and err:find("positive finite number", 1, true))
+
+    print(("Dashed stroke mesh: %d vertices for five butt-cap dashes"):format(
+        #dashedStroke.alphas))
+    print("Bezier/table/buffers/mesh output: ok")
 end
 
 -- -------------------------------------------------------------------

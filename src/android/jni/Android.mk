@@ -9,8 +9,6 @@ SRC_DIR := ../../shared
 THIRD_PARTY := $(SRC_DIR)/../../third_party
 
 POLYPARTITION_DIR := $(THIRD_PARTY)/polypartition/src
-SOLAR2D_UTILS_DIR := $(THIRD_PARTY)/solar2d_native_utils
-BYTEREADER_DIR := $(THIRD_PARTY)/ByteReader
 EARCUT_DIR := $(THIRD_PARTY)/earcut/include
 
 ######################################################################
@@ -34,21 +32,25 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libplugin.geometry2d
 
 LOCAL_C_INCLUDES := $(POLYPARTITION_DIR) \
-    $(SOLAR2D_UTILS_DIR) \
-    $(BYTEREADER_DIR) \
     $(EARCUT_DIR)
 
 LOCAL_SRC_FILES := $(SRC_DIR)/plugin_geometry2d.cpp \
+	$(SRC_DIR)/geometry2d_lua.cpp \
+	$(SRC_DIR)/corona_buffer.cpp \
+	$(SRC_DIR)/mesh_result.cpp \
+	$(SRC_DIR)/mesh_builder.cpp \
+	$(SRC_DIR)/polypartition_module.cpp \
+	$(SRC_DIR)/earcut_module.cpp \
+	$(SRC_DIR)/mesh_module.cpp \
+	$(SRC_DIR)/bezier_path.cpp \
     $(SRC_DIR)/fringe.cpp \
-    $(THIRD_PARTY)/polypartition/src/polypartition.cpp \
-    $(THIRD_PARTY)/ByteReader/ByteReader.cpp
+    $(THIRD_PARTY)/polypartition/src/polypartition.cpp
 
 LOCAL_CFLAGS := \
     -DANDROID_NDK \
     -DNDEBUG \
     -D_REENTRANT \
     -DRtt_ANDROID_ENV \
-    -DBR_NAMESPACE_PREFIX=geometry2d_br \
     -O3 \
     -fPIC \
     -DPIC

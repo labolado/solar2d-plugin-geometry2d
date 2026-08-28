@@ -57,8 +57,8 @@
     <PreBuildEvent />
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(CORONA_ROOT)\Corona\shared\include\Corona;$(CORONA_ROOT)\Corona\shared\include\lua;..\shared\include;..\..\third_party\libvpx;..\..\third_party\libwebm;..\..\third_party\opus\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;PLUGIN_EXPORTS;plugin_geometry2d_LOG_ENABLED=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(CORONA_ROOT)\Corona\shared\include\Corona;$(CORONA_ROOT)\Corona\shared\include\lua;..\shared;..\..\third_party\polypartition\src;..\..\third_party\earcut\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp14</LanguageStandard>
@@ -66,8 +66,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>third_party_libs;libs;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vpx.lib;webm.lib;opus.lib;OpenAL32.lib;$(CORONA_ROOT)\Corona\win\lib\*.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(CORONA_ROOT)\Corona\win\lib\*.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
       <TargetMachine>MachineX86</TargetMachine>
@@ -82,8 +81,8 @@ copy /Y "$(TargetPath)" "%APPDATA%\Corona Labs\Corona Simulator\Plugins\"</Comma
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>$(CORONA_ROOT)\Corona\shared\include\Corona;$(CORONA_ROOT)\Corona\shared\include\lua;..\shared\include;..\..\third_party\libvpx;..\..\third_party\libwebm;..\..\third_party\opus\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;PLUGIN_EXPORTS;plugin_geometry2d_LOG_ENABLED=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(CORONA_ROOT)\Corona\shared\include\Corona;$(CORONA_ROOT)\Corona\shared\include\lua;..\shared;..\..\third_party\polypartition\src;..\..\third_party\earcut\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <LanguageStandard>stdcpp14</LanguageStandard>
@@ -91,8 +90,7 @@ copy /Y "$(TargetPath)" "%APPDATA%\Corona Labs\Corona Simulator\Plugins\"</Comma
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>third_party_libs;libs;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vpx.lib;webm.lib;opus.lib;OpenAL32.lib;$(CORONA_ROOT)\Corona\win\lib\*.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(CORONA_ROOT)\Corona\win\lib\*.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
@@ -105,9 +103,17 @@ copy /Y "$(TargetPath)" "%APPDATA%\Corona Labs\Corona Simulator\Plugins\"</Comma
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\shared\src\lua\WebMTextureBinding.cpp" />
-    <ClCompile Include="..\shared\src\decoders\WebMDecoder.cpp" />
-    <ClCompile Include="..\shared\generated\plugin_geometry2d.c" />
+    <ClCompile Include="..\shared\plugin_geometry2d.cpp" />
+    <ClCompile Include="..\shared\geometry2d_lua.cpp" />
+    <ClCompile Include="..\shared\corona_buffer.cpp" />
+    <ClCompile Include="..\shared\mesh_result.cpp" />
+    <ClCompile Include="..\shared\mesh_builder.cpp" />
+    <ClCompile Include="..\shared\polypartition_module.cpp" />
+    <ClCompile Include="..\shared\earcut_module.cpp" />
+    <ClCompile Include="..\shared\mesh_module.cpp" />
+    <ClCompile Include="..\shared\bezier_path.cpp" />
+    <ClCompile Include="..\shared\fringe.cpp" />
+    <ClCompile Include="..\..\third_party\polypartition\src\polypartition.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
