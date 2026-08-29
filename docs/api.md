@@ -55,11 +55,13 @@ All `util` and `path` mesh functions accept `opts.output`:
 | Value | Result |
 |-------|--------|
 | `"table"` | Default. Existing Lua number tables; fully backward-compatible. |
-| `"buffers"` | Mesh data whose `vertices`, `indices`, and `alphas` / `distances` are owning `CoronaMemory` descriptors. |
-| `"mesh"` | Returns `displayMesh, attributes`; the second result contains packed auxiliary attributes. |
+| `"buffers"` | Mesh data whose `vertices`, `indices`, and `alphas` / `distances` are owning `CoronaMemory` descriptors. Alpha meshes also include packed `fillVertexColors`. |
+| `"mesh"` | Returns `displayMesh, attributes`; alpha meshes pass packed vertex colors directly to `display.newMesh()`, and the second result retains all packed auxiliary attributes. |
 
-`output="mesh"` only creates the geometry. It does not translate by
-`mesh.path:getVertexOffset()` and does not bind a paint, shader, or vertex extension.
+`output="mesh"` does not translate by `mesh.path:getVertexOffset()`. For fringe
+alpha output it creates white packed RGBA8 vertex colors, passes them to
+`display.newMesh()`, and leaves the mesh tintable with `mesh:setFillColor()`.
+SDF distance output does not bind a paint, shader, or vertex extension.
 
 Packed SDF output can be written directly with Solar2D's bulk custom-attribute API:
 
@@ -91,9 +93,11 @@ even though the extension storage is already allocated. The one-shot
 second-`enterFrame` write above is required under the confirmed "no Solar2D source changes"
 boundary. Existing meshes that have already rendered can be updated directly.
 
-`alphas` / `distances` are per-vertex data, baked into vertex colors with `setFillVertexColor` (per-vertex colors replace the constant fill color; the AA gradient needs no custom shader):
+With table output, `alphas` remains a Lua number array and can be applied with
+the original per-vertex API:
 
 ```lua
+local data = Geometry2D.path.meshStroke(path, 8, {output = "table"})
 local mesh = display.newMesh(data)
 mesh.x, mesh.y = ox, oy
 mesh:translate(mesh.path:getVertexOffset())
@@ -101,6 +105,21 @@ for i = 1, mesh.fillVertexCount do
     mesh:setFillVertexColor(i, r, g, b, data.alphas[i])
 end
 ```
+
+With buffer output, `alphas` is a float32 descriptor and is not Lua-indexable.
+The plugin additionally returns `fillVertexColors`, containing one white RGBA8
+color per vertex with the AA value in its alpha byte:
+
+```lua
+local data = Geometry2D.path.meshStroke(path, 8, {output = "buffers"})
+local mesh = display.newMesh(data)
+mesh:setFillColor(r, g, b)
+```
+
+Solar2D multiplies these white per-vertex colors by the fill paint, so changing
+the mesh fill color preserves the AA ramp. `output="mesh"` passes the same
+descriptor to `display.newMesh()` and returns it as
+`attributes.fillVertexColors`; it does not perform a second `path:update()`.
 
 ### Common options
 
