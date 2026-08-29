@@ -1,32 +1,18 @@
-# Builds the win32 plugin (plugin_geometry2d.dll) fresh on a Windows runner, then
-# publishes it together with the already-committed platform binaries under
-# plugins/**. The publish step replicates solar2d/directory-plugin-action's
-# packaging INLINE (not by calling the action) — see the publish-release job for
-# why (the action re-checks-out and would wipe the injected, uncommitted DLL).
-#
-# Why build win32 here instead of committing a prebuilt DLL: the plugin is
-# authored on macOS, so the Windows binary can't be produced locally. CI is the
-# only place it gets built — so it's built on every publish and injected into the
-# plugins/ tree the publish action consumes. The DLL is never committed.
-#
-# NOTE: the Windows build chain (including the Corona Native SDK install path) is
-# UNVERIFIED on a real runner. geometry2d has no codec or other prebuilt native
-# library dependencies; polypartition and earcut are built from source. The steps
-# probe + fail loudly so the first few CI runs pinpoint what needs tweaking.
-# publish-release depends on build-win32, so a red Windows build blocks the
-# release (win32 is published *together* with the others, by design).
+# Build every published native artifact from source before creating a release.
+# Manual runs are compile-only so CI changes can be tested without publishing.
 
 name: publish
 
-# Release is cut only on the deliberate signals below (push to plugins/** etc.).
-# A manual "Run workflow" (workflow_dispatch) builds win32 only and skips the
-# publish job — so the unverified Windows build can be iterated without cutting
-# a release every time (publish-release is gated on the event type).
 on:
   push:
     paths:
-      - 'plugins/**'
+      - '.github/workflows/publish.yml'
+      - '.github/scripts/**'
+      - '.gitmodules'
       - 'docs/**'
+      - 'plugins/**'
+      - 'src/**'
+      - 'third_party/**'
   repository_dispatch:
   workflow_dispatch:
 
@@ -34,15 +20,180 @@ permissions:
   contents: write
 
 env:
-  # Corona/Solar2D build whose Native SDK we build + link against. Matches the
-  # plugins/<YEAR.BUILD>/ folder so the ABI lines up. Bump together with that
-  # folder if you retarget a newer Solar2D build.
   SOLAR2D_YEAR: '2025'
   SOLAR2D_BUILD: '3720'
-  # The committed plugins folder for this build (plugins/<PLUGIN_BUILD>/...).
   PLUGIN_BUILD: '2025.3720'
 
 jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Check out Solar2D public native headers
+        uses: actions/checkout@v4
+        with:
+          repository: coronalabs/corona
+          ref: ${{ env.SOLAR2D_BUILD }}
+          path: _solar2d
+          sparse-checkout: |
+            librtt/Corona
+            external/lua-5.1.3/src
+          fetch-depth: 1
+
+      - name: Prepare Corona Native header layout
+        run: sudo bash .github/scripts/prepare-solar2d-native-headers.sh _solar2d /Applications/CoronaEnterprise
+
+      - name: Build macOS Simulator plugin
+        run: |
+          mkdir -p build-output
+          PLUGIN_BUILD="$PLUGIN_BUILD" bash src/mac/build.sh "$PWD/build-output"
+          arches="$(lipo -archs build-output/plugin_geometry2d.dylib)"
+          echo "$arches" | grep x86_64
+          echo "$arches" | grep arm64
+          nm -gU build-output/plugin_geometry2d.dylib | grep luaopen_plugin_geometry2d
+          mkdir -p staging/plugin-build/mac-sim
+          cp build-output/plugin_geometry2d.dylib staging/plugin-build/mac-sim/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geometry2d-macos
+          path: staging/plugin-build
+          if-no-files-found: error
+
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Check out Solar2D public native headers
+        uses: actions/checkout@v4
+        with:
+          repository: coronalabs/corona
+          ref: ${{ env.SOLAR2D_BUILD }}
+          path: _solar2d
+          sparse-checkout: |
+            librtt/Corona
+            external/lua-5.1.3/src
+          fetch-depth: 1
+
+      - name: Prepare Corona Native header layout
+        run: sudo bash .github/scripts/prepare-solar2d-native-headers.sh _solar2d /Applications/CoronaEnterprise
+
+      - name: Build and stage iOS plugins
+        run: |
+          PLUGIN_BUILD="$PLUGIN_BUILD" bash src/ios/build.sh
+          test "$(lipo -archs plugins/$PLUGIN_BUILD/iphone/libplugin_geometry2d.a)" = "arm64"
+          sim_arches="$(lipo -archs plugins/$PLUGIN_BUILD/iphone-sim/libplugin_geometry2d.a)"
+          echo "$sim_arches" | grep x86_64
+          echo "$sim_arches" | grep arm64
+          mkdir -p staging/plugin-build
+          cp -R plugins/$PLUGIN_BUILD/iphone staging/plugin-build/
+          cp -R plugins/$PLUGIN_BUILD/iphone-sim staging/plugin-build/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geometry2d-ios
+          path: staging/plugin-build
+          if-no-files-found: error
+
+  build-tvos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Check out Solar2D public native headers
+        uses: actions/checkout@v4
+        with:
+          repository: coronalabs/corona
+          ref: ${{ env.SOLAR2D_BUILD }}
+          path: _solar2d
+          sparse-checkout: |
+            librtt/Corona
+            external/lua-5.1.3/src
+          fetch-depth: 1
+
+      - name: Prepare Corona Native header layout
+        run: sudo bash .github/scripts/prepare-solar2d-native-headers.sh _solar2d /Applications/CoronaEnterprise
+
+      - name: Build and stage tvOS plugin
+        run: |
+          PLUGIN_BUILD="$PLUGIN_BUILD" bash src/tvos/build.sh
+          test -f plugins/$PLUGIN_BUILD/appletvos/Corona_plugin_geometry2d.xcframework/Info.plist
+          mkdir -p staging/plugin-build
+          cp -R plugins/$PLUGIN_BUILD/appletvos staging/plugin-build/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geometry2d-tvos
+          path: staging/plugin-build
+          if-no-files-found: error
+
+  build-android:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Check out Solar2D public native headers
+        uses: actions/checkout@v4
+        with:
+          repository: coronalabs/corona
+          ref: ${{ env.SOLAR2D_BUILD }}
+          path: _solar2d
+          sparse-checkout: |
+            librtt/Corona
+            external/lua-5.1.3/src
+          fetch-depth: 1
+
+      - name: Prepare Corona Native header layout
+        run: sudo bash .github/scripts/prepare-solar2d-native-headers.sh _solar2d /Applications/CoronaEnterprise
+
+      - name: Download CoronaCards Android runtime
+        run: |
+          curl -sSL --fail \
+            -o "$RUNNER_TEMP/CoronaCards-Android.zip" \
+            "https://github.com/coronalabs/corona/releases/download/$SOLAR2D_BUILD/CoronaCards-Android-$SOLAR2D_YEAR.$SOLAR2D_BUILD.zip"
+          unzip -q "$RUNNER_TEMP/CoronaCards-Android.zip" CoronaCards.aar -d "$RUNNER_TEMP/corona-cards"
+          sudo mkdir -p /Applications/CoronaEnterprise/Corona/android/lib/gradle
+          sudo cp "$RUNNER_TEMP/corona-cards/CoronaCards.aar" \
+            /Applications/CoronaEnterprise/Corona/android/lib/gradle/Corona.aar
+
+      - name: Install Android NDK r27c
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: false
+
+      - name: Build and stage Android plugins
+        env:
+          ANDROID_NDK: ${{ steps.ndk.outputs.ndk-path }}
+          CORONA_NATIVE: /Applications/CoronaEnterprise
+          CORONA_AAR: /Applications/CoronaEnterprise/Corona/android/lib/gradle/Corona.aar
+        run: |
+          PLUGIN_BUILD="$PLUGIN_BUILD" bash src/android/build.sh
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            library="plugins/$PLUGIN_BUILD/android/jniLibs/$abi/libplugin.geometry2d.so"
+            test -f "$library"
+            file "$library"
+          done
+          mkdir -p staging/plugin-build
+          cp -R plugins/$PLUGIN_BUILD/android staging/plugin-build/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geometry2d-android
+          path: staging/plugin-build
+          if-no-files-found: error
+
   build-win32:
     runs-on: windows-2022
     steps:
@@ -50,131 +201,117 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Download + install Solar2D (Corona Native SDK)
+      - name: Download and install Solar2D Native SDK
         shell: pwsh
         run: |
           $url = "https://github.com/coronalabs/corona/releases/download/$env:SOLAR2D_BUILD/Solar2D-Windows-$env:SOLAR2D_YEAR.$env:SOLAR2D_BUILD.msi"
-          Write-Host "Downloading $url"
           curl.exe -L --fail -o solar2d.msi $url
           if (-not (Test-Path solar2d.msi)) { throw "Solar2D MSI download failed" }
-          Write-Host "Installing silently..."
-          $p = Start-Process msiexec.exe -ArgumentList '/i','solar2d.msi','/qn','/norestart' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "msiexec failed with exit code $($p.ExitCode)" }
+          $process = Start-Process msiexec.exe -ArgumentList '/i','solar2d.msi','/qn','/norestart' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "msiexec failed with exit code $($process.ExitCode)" }
 
-      - name: Locate Native SDK and export CORONA_ROOT
+      - name: Locate Corona Native SDK
         shell: pwsh
         run: |
-          # The .vcxproj references $(CORONA_ROOT)\Corona\win\lib and
-          # $(CORONA_ROOT)\Corona\shared\include, so CORONA_ROOT is the directory
-          # that *contains* the `Corona` folder. Find it by locating win\lib.
-          $roots = @('C:\Program Files (x86)','C:\Program Files')
+          $roots = @('C:\Program Files (x86)', 'C:\Program Files')
           $lib = Get-ChildItem $roots -Recurse -Directory -ErrorAction SilentlyContinue |
-                 Where-Object { $_.FullName -match '\\Corona\\win\\lib$' } |
-                 Select-Object -First 1
-          if (-not $lib) {
-            Write-Host "Could not find Corona\win\lib. Dumping install tree:"
-            Get-ChildItem 'C:\Program Files (x86)\Corona Labs' -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty FullName
-            throw "Corona Native SDK win\lib not found after install"
-          }
-          # ...\<ROOT>\Corona\win\lib  ->  <ROOT>
+            Where-Object { $_.FullName -match '\\Corona\\win\\lib$' } |
+            Select-Object -First 1
+          if (-not $lib) { throw "Corona Native SDK win\lib was not found after install" }
           $root = $lib.Parent.Parent.Parent.FullName
-          Write-Host "CORONA_ROOT=$root"
           "CORONA_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "win\lib contents:"
-          Get-ChildItem "$root\Corona\win\lib" | Select-Object -ExpandProperty Name
+          Write-Host "CORONA_ROOT=$root"
 
-      # Full MSVC x86 environment (cl, msbuild, INCLUDE, LIB) for the plugin
-      # build. Solar2D's Windows Simulator and native plugins are Win32/x86.
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x86
 
-      - name: Build plugin_geometry2d.dll (msbuild, Release/Win32)
-        shell: pwsh
-        # PostBuildEventUseInBuild=false disables the project's post-build xcopy,
-        # which deploys the DLL into the local Corona Simulator Plugins dir for dev
-        # convenience — pointless in CI, and its `xcopy /E` prompts interactively
-        # for a single file (F/D?), which hangs/fails on a non-interactive runner.
-        run: msbuild src\win32\Plugin.sln /p:Configuration=Release /p:Platform=Win32 /m /p:PostBuildEventUseInBuild=false
+      - name: Build and package Windows Simulator plugin
+        shell: cmd
+        run: src\win32\build.bat
 
-      - name: Stage win32-sim artifact
+      - name: Verify and stage win32-sim plugin
         shell: pwsh
         run: |
-          $dll = "src\win32\Release\plugin_geometry2d.dll"
-          if (-not (Test-Path $dll)) { $dll = "src\win32\Win32\Release\plugin_geometry2d.dll" }
-          if (-not (Test-Path $dll)) {
-            Write-Host "Searching for plugin_geometry2d.dll:"
-            Get-ChildItem src\win32 -Recurse -Filter plugin_geometry2d.dll -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty FullName
-            throw "plugin_geometry2d.dll not found after build"
+          $dll = "plugins\$env:PLUGIN_BUILD\win32-sim\plugin_geometry2d.dll"
+          if (-not (Test-Path $dll)) { throw "plugin_geometry2d.dll was not packaged" }
+          $exports = dumpbin.exe /exports $dll
+          if (-not ($exports | Select-String 'luaopen_plugin_geometry2d')) {
+            throw "luaopen_plugin_geometry2d is not exported"
           }
-          New-Item -ItemType Directory -Force -Path staging\win32-sim | Out-Null
-          Copy-Item $dll staging\win32-sim\plugin_geometry2d.dll
-          Write-Host "Staged: staging\win32-sim\plugin_geometry2d.dll"
+          New-Item -ItemType Directory -Force staging\plugin-build | Out-Null
+          Copy-Item -Recurse "plugins\$env:PLUGIN_BUILD\win32-sim" staging\plugin-build\
 
       - uses: actions/upload-artifact@v4
         with:
-          name: win32-sim
-          path: staging/win32-sim/plugin_geometry2d.dll
+          name: geometry2d-win32
+          path: staging/plugin-build
           if-no-files-found: error
 
   publish-release:
-    needs: build-win32
-    # Skip manual runs (workflow_dispatch) so the Windows build can be iterated
-    # without publishing, and only release from the default branch (same guard
-    # solar2d/directory-plugin-action applies internally).
+    needs:
+      - build-macos
+      - build-ios
+      - build-tvos
+      - build-android
+      - build-win32
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && (github.event_name == 'push' || github.event_name == 'repository_dispatch') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Inject the freshly built win32 DLL into the plugins tree.
+      - name: Replace committed binaries with fresh CI artifacts
+        run: |
+          rm -rf "plugins/$PLUGIN_BUILD"
+          mkdir -p "plugins/$PLUGIN_BUILD"
+
       - uses: actions/download-artifact@v4
         with:
-          name: win32-sim
-          path: plugins/${{ env.PLUGIN_BUILD }}/win32-sim
+          pattern: geometry2d-*
+          path: plugins/${{ env.PLUGIN_BUILD }}
+          merge-multiple: true
 
-      - name: Show plugins tree to be published
-        run: find plugins -type f -not -name '.DS_Store' | sort
-
-      # Replicate solar2d/directory-plugin-action's packaging INLINE. We cannot
-      # call the action: its first step is its own `actions/checkout`, which wipes
-      # the injected (uncommitted) win32 DLL from the workspace before tarring, so
-      # win32 would never be published. Same tar as the action.
-      - name: Package each platform into <build>-<platform>.tgz
+      - name: Verify complete release tree
         run: |
-          cd plugins
-          for build in */; do
-            build="${build%/}"
-            ( cd "$build"
-              for platform in */; do
-                platform="${platform%/}"
-                ( cd "$platform"
-                  ls * >/dev/null 2>&1 || exit 0
-                  tar -czvf ../../"$build-$platform.tgz" --exclude=".*" *
-                )
-              done
+          test -f "plugins/$PLUGIN_BUILD/mac-sim/plugin_geometry2d.dylib"
+          test -f "plugins/$PLUGIN_BUILD/iphone/libplugin_geometry2d.a"
+          test -f "plugins/$PLUGIN_BUILD/iphone-sim/libplugin_geometry2d.a"
+          test -f "plugins/$PLUGIN_BUILD/appletvos/Corona_plugin_geometry2d.xcframework/Info.plist"
+          test -f "plugins/$PLUGIN_BUILD/win32-sim/plugin_geometry2d.dll"
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            test -f "plugins/$PLUGIN_BUILD/android/jniLibs/$abi/libplugin.geometry2d.so"
+          done
+          find "plugins/$PLUGIN_BUILD" -type f -not -name '.DS_Store' | sort
+
+      - name: Package each platform
+        run: |
+          cd "plugins/$PLUGIN_BUILD"
+          for platform in */; do
+            platform="${platform%/}"
+            (
+              cd "$platform"
+              tar -czvf "../../$PLUGIN_BUILD-$platform.tgz" --exclude='.*' *
             )
           done
-          echo "Produced:"; ls -la *.tgz
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: plugins/*.tgz
+          files: plugins/${{ env.PLUGIN_BUILD }}-*.tgz
           name: Release v${{ github.run_number }}
           tag_name: v${{ github.run_number }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      # Ask the Solar2D plugin directory to refresh (same dispatch the action does).
       - name: Request Solar2D directory update
         shell: bash
         env:
           ISSUE_PAT: ${{ secrets.ISSUE_PAT }}
         run: |
-          if [ -z "$ISSUE_PAT" ]; then echo "No ISSUE_PAT secret; skipping directory update."; exit 0; fi
+          if [ -z "$ISSUE_PAT" ]; then
+            echo "No ISSUE_PAT secret; skipping directory update."
+            exit 0
+          fi
           curl --request POST \
             --url https://api.github.com/repos/solar2d/plugins.solar2d.com/dispatches \
             --header "authorization: Bearer $ISSUE_PAT" \

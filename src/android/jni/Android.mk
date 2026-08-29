@@ -1,6 +1,6 @@
 LOCAL_PATH := $(call my-dir)
 
-CORONA_NATIVE := /Applications/CoronaEnterprise
+CORONA_NATIVE ?= /Applications/CoronaEnterprise
 CORONA_ROOT := $(CORONA_NATIVE)/Corona
 LUA_API_DIR := $(CORONA_ROOT)/shared/include/lua
 LUA_API_CORONA := $(CORONA_ROOT)/shared/include/Corona

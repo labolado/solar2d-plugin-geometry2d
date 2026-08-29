@@ -10,13 +10,15 @@ set -o errexit
 path=$(dirname "$0")
 pushd "$path" > /dev/null; path=$(pwd); popd > /dev/null
 
-CONFIG=Release
+CONFIG=${CONFIG:-Release}
 FW=Corona_plugin_geometry2d
-lib_version=2025.3720
+lib_version=${PLUGIN_BUILD:-2025.3720}
 
-xcodebuild -project "$path/Plugin.xcodeproj" -configuration $CONFIG clean
-xcodebuild -project "$path/Plugin.xcodeproj" -configuration $CONFIG -sdk appletvos
-xcodebuild -project "$path/Plugin.xcodeproj" -configuration $CONFIG -sdk appletvsimulator
+xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" clean
+xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" \
+    -sdk appletvos ARCHS=arm64 ONLY_ACTIVE_ARCH=NO
+xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" \
+    -sdk appletvsimulator ARCHS="x86_64 arm64" ONLY_ACTIVE_ARCH=NO
 
 DEV_FW="$path/build/$CONFIG-appletvos/${FW}.framework"
 SIM_FW="$path/build/$CONFIG-appletvsimulator/${FW}.framework"
