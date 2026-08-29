@@ -2,8 +2,9 @@
 // The rest of the path parsing, contour grouping, and Solar2D bindings are
 // specific to plugin.geometry2d.
 
-#include "geometry2d_lua.h"
+#include "bezier_path.h"
 
+#include "clipper2_bridge.h"
 #include "mesh_builder.h"
 #include "mesh_result.h"
 
@@ -20,19 +21,15 @@ namespace {
 static constexpr uint32_t kPathFlattenOptions = OptionTessTol | OptionMaxCurvePoints;
 static constexpr uint32_t kPathFillOptions = OptionFringe | OptionJoin | OptionMiterLimit |
     OptionTessTol | OptionRefine | OptionMode | OptionOutput | OptionMaxCurvePoints |
-    OptionLegacyUVs;
+    OptionLegacyUVs | OptionFillRule | OptionIntersections | OptionClipperPrecision;
 static constexpr uint32_t kPathSDFOptions = OptionDistance | OptionDistanceSign |
     OptionJoin | OptionMiterLimit | OptionTessTol | OptionRefine | OptionMode |
-    OptionOutput | OptionMaxCurvePoints | OptionLegacyUVs;
+    OptionOutput | OptionMaxCurvePoints | OptionLegacyUVs | OptionFillRule |
+    OptionIntersections | OptionClipperPrecision;
 static constexpr uint32_t kPathStrokeOptions = OptionFringe | OptionCap | OptionJoin |
     OptionMiterLimit | OptionTessTol | OptionClosed | OptionMode | OptionOutput |
     OptionMaxCurvePoints | OptionLegacyUVs | OptionDashPattern | OptionDashOffset |
     OptionMaxDashSegments;
-
-struct Contour {
-    std::vector<std::pair<float, float>> points;
-    bool closed = false;
-};
 
 static float NumberAt(lua_State *L, int command, int index)
 {
@@ -67,6 +64,23 @@ static void CheckCommandLength(lua_State *L, int command, size_t expected,
                    static_cast<int>(actual));
 }
 
+static void CheckDenseArray(lua_State *L, int table, size_t count,
+                            const char *context)
+{
+    table = CoronaLuaNormalize(L, table);
+    lua_pushnil(L);
+    while (lua_next(L, table) != 0)
+    {
+        if (lua_type(L, -2) != LUA_TNUMBER)
+            luaL_error(L, "%s must contain only array entries", context);
+        lua_Number key = lua_tonumber(L, -2);
+        if (key < 1.0 || std::floor(static_cast<double>(key)) != key ||
+            key > static_cast<lua_Number>(count))
+            luaL_error(L, "%s must be a dense array", context);
+        lua_pop(L, 1);
+    }
+}
+
 static bool AddPoint(std::vector<std::pair<float, float>> &points, float x, float y,
                      size_t maxPoints)
 {
@@ -82,7 +96,7 @@ static bool AddPoint(std::vector<std::pair<float, float>> &points, float x, floa
 }
 
 // Adaptive cubic subdivision follows NanoVG's nvg__tesselateBezier().
-static bool FlattenCubic(lua_State *L, std::vector<std::pair<float, float>> &points,
+static bool FlattenCubic(std::vector<std::pair<float, float>> &points,
                          float x1, float y1, float x2, float y2,
                          float x3, float y3, float x4, float y4,
                          float tolerance, int level, size_t maxPoints)
@@ -101,105 +115,176 @@ static bool FlattenCubic(lua_State *L, std::vector<std::pair<float, float>> &poi
     {
         return AddPoint(points, x4, y4, maxPoints);
     }
-    if (!FlattenCubic(L, points, x1, y1, x12, y12, x123, y123, x1234, y1234,
+    if (!FlattenCubic(points, x1, y1, x12, y12, x123, y123, x1234, y1234,
                       tolerance, level + 1, maxPoints)) return false;
-    return FlattenCubic(L, points, x1234, y1234, x234, y234, x34, y34, x4, y4,
+    return FlattenCubic(points, x1234, y1234, x234, y234, x34, y34, x4, y4,
                         tolerance, level + 1, maxPoints);
 }
 
-static bool ReadPath(lua_State *L, int arg, const MeshOptions &options,
-                     std::vector<Contour> &contours, std::string &geometryError)
+} // namespace
+
+bool ValidatePathCommands(const std::vector<PathCommand> &commands, std::string &error)
+{
+    bool hasCurrent = false;
+    for (size_t i = 0; i < commands.size(); ++i)
+    {
+        switch (commands[i].verb)
+        {
+            case PathVerb::MoveTo: hasCurrent = true; break;
+            case PathVerb::LineTo:
+                if (!hasCurrent) { error = "lineTo before moveTo at command #" + std::to_string(i + 1); return false; }
+                break;
+            case PathVerb::QuadraticTo:
+                if (!hasCurrent) { error = "quadraticTo before moveTo at command #" + std::to_string(i + 1); return false; }
+                break;
+            case PathVerb::CubicTo:
+                if (!hasCurrent) { error = "cubicTo before moveTo at command #" + std::to_string(i + 1); return false; }
+                break;
+            case PathVerb::Close:
+                if (!hasCurrent) { error = "close before moveTo at command #" + std::to_string(i + 1); return false; }
+                break;
+        }
+    }
+    return true;
+}
+
+bool ReadPathCommands(lua_State *L, int arg, std::vector<PathCommand> &commands)
 {
     if (!lua_istable(L, arg)) return false;
     arg = CoronaLuaNormalize(L, arg);
     lua_getfield(L, arg, "commands");
-    int commands = lua_istable(L, -1) ? CoronaLuaNormalize(L, -1) : arg;
-
-    size_t maxPoints = options.maxCurvePoints;
-    Contour current;
-    bool hasCurrent = false;
-    float cx = 0.0f, cy = 0.0f, sx = 0.0f, sy = 0.0f;
-    size_t count = lua_objlen(L, commands);
+    bool wrapped = lua_istable(L, -1);
+    int commandArray = wrapped ? CoronaLuaNormalize(L, -1) : arg;
+    if (wrapped)
+    {
+        lua_pushnil(L);
+        while (lua_next(L, arg) != 0)
+        {
+            if (lua_type(L, -2) != LUA_TSTRING ||
+                std::strcmp(lua_tostring(L, -2), "commands") != 0)
+                luaL_error(L, "Bezier path descriptor accepts only the 'commands' field");
+            lua_pop(L, 1);
+        }
+    }
+    size_t count = lua_objlen(L, commandArray);
+    if (count > static_cast<size_t>(std::numeric_limits<int>::max()))
+        luaL_error(L, "Bezier path command list is too large");
+    CheckDenseArray(L, commandArray, count, "Bezier path command list");
+    commands.clear();
+    commands.reserve(count);
     for (size_t i = 1; i <= count; ++i)
     {
-        lua_rawgeti(L, commands, static_cast<int>(i));
-        if (!lua_istable(L, -1)) luaL_error(L, "Path command #%d must be a table", static_cast<int>(i));
-        int command = CoronaLuaNormalize(L, -1);
-        std::string name = CommandName(L, command);
+        lua_rawgeti(L, commandArray, static_cast<int>(i));
+        if (!lua_istable(L, -1))
+            luaL_error(L, "Path command #%d must be a table", static_cast<int>(i));
+        int commandIndex = CoronaLuaNormalize(L, -1);
+        std::string name = CommandName(L, commandIndex);
+        PathCommand command;
+        size_t valueCount = 0;
         if (name == "M" || name == "moveTo")
         {
-            CheckCommandLength(L, command, 3, name.c_str(), i);
-            if (hasCurrent && !current.points.empty()) contours.push_back(std::move(current));
-            current = Contour();
-            cx = sx = NumberAt(L, command, 2);
-            cy = sy = NumberAt(L, command, 3);
-            if (!AddPoint(current.points, cx, cy, maxPoints))
-            {
-                geometryError = "Bezier path exceeds maxCurvePoints";
-                return false;
-            }
-            hasCurrent = true;
+            command.verb = PathVerb::MoveTo; valueCount = 2;
         }
         else if (name == "L" || name == "lineTo")
         {
-            CheckCommandLength(L, command, 3, name.c_str(), i);
-            if (!hasCurrent) luaL_error(L, "lineTo before moveTo at command #%d", static_cast<int>(i));
-            cx = NumberAt(L, command, 2); cy = NumberAt(L, command, 3);
-            if (!AddPoint(current.points, cx, cy, maxPoints))
-            {
-                geometryError = "Bezier path exceeds maxCurvePoints";
-                return false;
-            }
+            command.verb = PathVerb::LineTo; valueCount = 2;
         }
         else if (name == "Q" || name == "quadraticTo")
         {
-            CheckCommandLength(L, command, 5, name.c_str(), i);
-            if (!hasCurrent) luaL_error(L, "quadraticTo before moveTo at command #%d", static_cast<int>(i));
-            float qx = NumberAt(L, command, 2), qy = NumberAt(L, command, 3);
-            float ex = NumberAt(L, command, 4), ey = NumberAt(L, command, 5);
-            float c1x = cx + (qx - cx) * (2.0f / 3.0f);
-            float c1y = cy + (qy - cy) * (2.0f / 3.0f);
-            float c2x = ex + (qx - ex) * (2.0f / 3.0f);
-            float c2y = ey + (qy - ey) * (2.0f / 3.0f);
-            if (!FlattenCubic(L, current.points, cx, cy, c1x, c1y, c2x, c2y, ex, ey,
-                              options.tessTol, 0, maxPoints))
-            {
-                geometryError = "Bezier path exceeds maxCurvePoints";
-                return false;
-            }
-            cx = ex; cy = ey;
+            command.verb = PathVerb::QuadraticTo; valueCount = 4;
         }
         else if (name == "C" || name == "cubicTo")
         {
-            CheckCommandLength(L, command, 7, name.c_str(), i);
-            if (!hasCurrent) luaL_error(L, "cubicTo before moveTo at command #%d", static_cast<int>(i));
-            float c1x = NumberAt(L, command, 2), c1y = NumberAt(L, command, 3);
-            float c2x = NumberAt(L, command, 4), c2y = NumberAt(L, command, 5);
-            float ex = NumberAt(L, command, 6), ey = NumberAt(L, command, 7);
-            if (!FlattenCubic(L, current.points, cx, cy, c1x, c1y, c2x, c2y, ex, ey,
-                              options.tessTol, 0, maxPoints))
-            {
-                geometryError = "Bezier path exceeds maxCurvePoints";
-                return false;
-            }
-            cx = ex; cy = ey;
+            command.verb = PathVerb::CubicTo; valueCount = 6;
         }
         else if (name == "Z" || name == "close")
         {
-            CheckCommandLength(L, command, 1, name.c_str(), i);
-            if (!hasCurrent) luaL_error(L, "close before moveTo at command #%d", static_cast<int>(i));
-            current.closed = true; cx = sx; cy = sy;
+            command.verb = PathVerb::Close; valueCount = 0;
         }
-        else if (name == "m" || name == "l" || name == "q" || name == "c" || name == "z")
+        else if (name == "m" || name == "l" || name == "q" ||
+                 name == "c" || name == "z")
+        {
             luaL_error(L, "Relative path command '%s' at #%d is not supported; use uppercase absolute commands",
                        name.c_str(), static_cast<int>(i));
-        else luaL_error(L, "Unknown path command '%s' at #%d", name.c_str(), static_cast<int>(i));
+        }
+        else
+        {
+            luaL_error(L, "Unknown path command '%s' at #%d", name.c_str(), static_cast<int>(i));
+        }
+        CheckCommandLength(L, commandIndex, valueCount + 1, name.c_str(), i);
+        CheckDenseArray(L, commandIndex, valueCount + 1, "Path command");
+        for (size_t value = 0; value < valueCount; ++value)
+            command.values[value] = NumberAt(L, commandIndex, static_cast<int>(value + 2));
+        commands.push_back(command);
         lua_pop(L, 1);
     }
+    lua_pop(L, 1); // commands field / nil
+    std::string error;
+    if (!ValidatePathCommands(commands, error)) luaL_error(L, "%s", error.c_str());
+    return true;
+}
+
+bool FlattenPathCommands(const std::vector<PathCommand> &commands,
+                         const MeshOptions &options,
+                         std::vector<PathContour> &contours,
+                         std::string &error)
+{
+    contours.clear();
+    PathContour current;
+    bool hasCurrent = false;
+    float cx = 0.0f, cy = 0.0f, sx = 0.0f, sy = 0.0f;
+    for (const PathCommand &command : commands)
+    {
+        switch (command.verb)
+        {
+            case PathVerb::MoveTo:
+                if (hasCurrent && !current.points.empty()) contours.push_back(std::move(current));
+                current = PathContour();
+                cx = sx = command.values[0]; cy = sy = command.values[1];
+                if (!AddPoint(current.points, cx, cy, options.maxCurvePoints))
+                { error = "Bezier path exceeds maxCurvePoints"; return false; }
+                hasCurrent = true;
+                break;
+            case PathVerb::LineTo:
+                cx = command.values[0]; cy = command.values[1];
+                if (!AddPoint(current.points, cx, cy, options.maxCurvePoints))
+                { error = "Bezier path exceeds maxCurvePoints"; return false; }
+                break;
+            case PathVerb::QuadraticTo:
+            {
+                float qx = command.values[0], qy = command.values[1];
+                float ex = command.values[2], ey = command.values[3];
+                float c1x = cx + (qx - cx) * (2.0f / 3.0f);
+                float c1y = cy + (qy - cy) * (2.0f / 3.0f);
+                float c2x = ex + (qx - ex) * (2.0f / 3.0f);
+                float c2y = ey + (qy - ey) * (2.0f / 3.0f);
+                if (!FlattenCubic(current.points, cx, cy, c1x, c1y, c2x, c2y, ex, ey,
+                                  options.tessTol, 0, options.maxCurvePoints))
+                { error = "Bezier path exceeds maxCurvePoints"; return false; }
+                cx = ex; cy = ey;
+                break;
+            }
+            case PathVerb::CubicTo:
+            {
+                float ex = command.values[4], ey = command.values[5];
+                if (!FlattenCubic(current.points, cx, cy,
+                                  command.values[0], command.values[1],
+                                  command.values[2], command.values[3], ex, ey,
+                                  options.tessTol, 0, options.maxCurvePoints))
+                { error = "Bezier path exceeds maxCurvePoints"; return false; }
+                cx = ex; cy = ey;
+                break;
+            }
+            case PathVerb::Close:
+                current.closed = true; cx = sx; cy = sy;
+                break;
+        }
+    }
     if (hasCurrent && !current.points.empty()) contours.push_back(std::move(current));
-    lua_pop(L, 1); // pop commands field / nil
     return !contours.empty();
 }
+
+namespace {
 
 static double SignedArea(const std::vector<std::pair<float, float>> &points)
 {
@@ -227,7 +312,7 @@ static bool ContainsPoint(const std::vector<std::pair<float, float>> &ring, floa
     return inside;
 }
 
-static Ring ToRing(const Contour &contour)
+static Ring ToRing(const PathContour &contour)
 {
     Ring result;
     result.reserve(contour.points.size());
@@ -235,9 +320,13 @@ static Ring ToRing(const Contour &contour)
     return result;
 }
 
-static bool GroupFillContours(const std::vector<Contour> &contours,
-                              std::vector<Polygon> &groups, std::string &error)
+} // namespace
+
+bool GroupPathFillContours(const std::vector<PathContour> &contours,
+                           std::vector<Polygon> &groups, std::string &error)
 {
+    groups.clear();
+
     struct Outer { size_t contour; double area; };
     std::vector<Outer> outers;
     std::vector<size_t> holes;
@@ -272,10 +361,20 @@ static bool GroupFillContours(const std::vector<Contour> &contours,
     return true;
 }
 
+namespace {
+
+static bool ReadPath(lua_State *L, int arg, const MeshOptions &options,
+                     std::vector<PathContour> &contours, std::string &error)
+{
+    std::vector<PathCommand> commands;
+    if (!ReadPathCommands(L, arg, commands)) return false;
+    return FlattenPathCommands(commands, options, contours, error);
+}
+
 static int Flatten(lua_State *L)
 {
     MeshOptions options = GetMeshOptions(L, 2, kPathFlattenOptions, "path.flatten");
-    std::vector<Contour> contours;
+    std::vector<PathContour> contours;
     std::string error;
     if (!ReadPath(L, 1, options, contours, error))
         return error.empty() ? luaL_argerror(L, 1, "Expected a Bezier path command table") :
@@ -301,13 +400,13 @@ static int FillMesh(lua_State *L, bool sdf)
 {
     MeshOptions options = GetMeshOptions(L, 2, sdf ? kPathSDFOptions : kPathFillOptions,
                                          sdf ? "path.meshSDF" : "path.meshFill");
-    std::vector<Contour> contours;
+    std::vector<PathContour> contours;
     std::string error;
     if (!ReadPath(L, 1, options, contours, error))
         return error.empty() ? luaL_argerror(L, 1, "Expected a Bezier path command table") :
                                PushGeometryFailure(L, error.c_str());
     std::vector<Polygon> groups;
-    if (!GroupFillContours(contours, groups, error))
+    if (!PreparePathFillGroups(contours, options, groups, error))
         return PushGeometryFailure(L, error.c_str());
     MeshResult result;
     if (!BuildFillMesh(groups, options, sdf, result, error))
@@ -321,7 +420,7 @@ static int MeshSDF(lua_State *L) { return FillMesh(L, true); }
 static int MeshStroke(lua_State *L)
 {
     MeshOptions options = GetMeshOptions(L, 3, kPathStrokeOptions, "path.meshStroke");
-    std::vector<Contour> contours;
+    std::vector<PathContour> contours;
     std::string error;
     if (!ReadPath(L, 1, options, contours, error))
         return error.empty() ? luaL_argerror(L, 1, "Expected a Bezier path command table") :
@@ -351,6 +450,7 @@ void RegisterPath(lua_State *L)
         {"meshStroke", MeshStroke}, {nullptr, nullptr}
     };
     luaL_register(L, nullptr, functions);
+    RegisterRetainedShape(L);
 }
 
 } // namespace Geometry2D

@@ -57,11 +57,11 @@
     <PreBuildEvent />
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(CORONA_ROOT)\Corona\shared\include\Corona;$(CORONA_ROOT)\Corona\shared\include\lua;..\shared;..\..\third_party\polypartition\src;..\..\third_party\earcut\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(CORONA_ROOT)\Corona\shared\include\Corona;$(CORONA_ROOT)\Corona\shared\include\lua;..\shared;..\..\third_party\polypartition\src;..\..\third_party\earcut\include;..\..\third_party\clipper2\CPP\Clipper2Lib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
@@ -81,11 +81,11 @@ copy /Y "$(TargetPath)" "%APPDATA%\Corona Labs\Corona Simulator\Plugins\"</Comma
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>$(CORONA_ROOT)\Corona\shared\include\Corona;$(CORONA_ROOT)\Corona\shared\include\lua;..\shared;..\..\third_party\polypartition\src;..\..\third_party\earcut\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(CORONA_ROOT)\Corona\shared\include\Corona;$(CORONA_ROOT)\Corona\shared\include\lua;..\shared;..\..\third_party\polypartition\src;..\..\third_party\earcut\include;..\..\third_party\clipper2\CPP\Clipper2Lib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
@@ -112,8 +112,14 @@ copy /Y "$(TargetPath)" "%APPDATA%\Corona Labs\Corona Simulator\Plugins\"</Comma
     <ClCompile Include="..\shared\earcut_module.cpp" />
     <ClCompile Include="..\shared\mesh_module.cpp" />
     <ClCompile Include="..\shared\bezier_path.cpp" />
+    <ClCompile Include="..\shared\retained_shape.cpp" />
+    <ClCompile Include="..\shared\clipper2_bridge.cpp" />
+    <ClCompile Include="..\shared\clipper2_module.cpp" />
     <ClCompile Include="..\shared\fringe.cpp" />
     <ClCompile Include="..\..\third_party\polypartition\src\polypartition.cpp" />
+    <ClCompile Include="..\..\third_party\clipper2\CPP\Clipper2Lib\src\clipper.engine.cpp" />
+    <ClCompile Include="..\..\third_party\clipper2\CPP\Clipper2Lib\src\clipper.offset.cpp" />
+    <ClCompile Include="..\..\third_party\clipper2\CPP\Clipper2Lib\src\clipper.rectclip.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

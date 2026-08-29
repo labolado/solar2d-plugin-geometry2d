@@ -10,6 +10,7 @@ THIRD_PARTY := $(SRC_DIR)/../../third_party
 
 POLYPARTITION_DIR := $(THIRD_PARTY)/polypartition/src
 EARCUT_DIR := $(THIRD_PARTY)/earcut/include
+CLIPPER2_DIR := $(THIRD_PARTY)/clipper2/CPP/Clipper2Lib
 
 ######################################################################
 
@@ -32,7 +33,8 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libplugin.geometry2d
 
 LOCAL_C_INCLUDES := $(POLYPARTITION_DIR) \
-    $(EARCUT_DIR)
+    $(EARCUT_DIR) \
+    $(CLIPPER2_DIR)/include
 
 LOCAL_SRC_FILES := $(SRC_DIR)/plugin_geometry2d.cpp \
 	$(SRC_DIR)/geometry2d_lua.cpp \
@@ -43,8 +45,14 @@ LOCAL_SRC_FILES := $(SRC_DIR)/plugin_geometry2d.cpp \
 	$(SRC_DIR)/earcut_module.cpp \
 	$(SRC_DIR)/mesh_module.cpp \
 	$(SRC_DIR)/bezier_path.cpp \
+	$(SRC_DIR)/retained_shape.cpp \
+	$(SRC_DIR)/clipper2_bridge.cpp \
+	$(SRC_DIR)/clipper2_module.cpp \
     $(SRC_DIR)/fringe.cpp \
-    $(THIRD_PARTY)/polypartition/src/polypartition.cpp
+    $(THIRD_PARTY)/polypartition/src/polypartition.cpp \
+    $(CLIPPER2_DIR)/src/clipper.engine.cpp \
+    $(CLIPPER2_DIR)/src/clipper.offset.cpp \
+    $(CLIPPER2_DIR)/src/clipper.rectclip.cpp
 
 LOCAL_CFLAGS := \
     -DANDROID_NDK \
@@ -55,7 +63,7 @@ LOCAL_CFLAGS := \
     -fPIC \
     -DPIC
 
-LOCAL_CPPFLAGS := -fexceptions -fPIC -std=c++14
+LOCAL_CPPFLAGS := -fexceptions -fPIC -std=c++17
 
 LOCAL_LDFLAGS += -Wl,-s
 

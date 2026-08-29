@@ -57,5 +57,9 @@ CORONA_EXPORT int luaopen_plugin_geometry2d(lua_State *L)
     RegisterPath(L);
     lua_setfield(L, -2, "path");
 
+    lua_newtable(L);
+    RegisterClipper2(L);
+    lua_setfield(L, -2, "clipper2");
+
     return 1;
 }

@@ -304,6 +304,8 @@ static const MeshOptionDefinition kMeshOptionDefinitions[] = {
     {"distanceSign", OptionDistanceSign}, {"maxCurvePoints", OptionMaxCurvePoints},
     {"legacyUVs", OptionLegacyUVs}, {"dashPattern", OptionDashPattern},
     {"dashOffset", OptionDashOffset}, {"maxDashSegments", OptionMaxDashSegments},
+    {"fillRule", OptionFillRule}, {"intersections", OptionIntersections},
+    {"clipperPrecision", OptionClipperPrecision},
 };
 
 static uint32_t FindMeshOption(const char *name)
@@ -443,9 +445,9 @@ static const char *ReadStringField(lua_State *L, int arg, const char *name)
 }
 
 MeshOptions GetMeshOptions(lua_State *L, int arg, uint32_t allowed,
-                           const char *context)
+                           const char *context, const MeshOptions *defaults)
 {
-    MeshOptions result;
+    MeshOptions result = defaults ? *defaults : MeshOptions();
     if (lua_isnoneornil(L, arg)) return result;
     if (!lua_istable(L, arg)) luaL_argerror(L, arg, "Expected an options table");
     arg = CoronaLuaNormalize(L, arg);
@@ -508,6 +510,39 @@ MeshOptions GetMeshOptions(lua_State *L, int arg, uint32_t allowed,
         if (s && std::strcmp(s, "outsideNegative") == 0) result.outsidePositive = false;
         else if (s && std::strcmp(s, "outsidePositive") == 0) result.outsidePositive = true;
         else if (s) luaL_error(L, "Invalid distanceSign '%s'; expected 'outsideNegative' or 'outsidePositive'", s);
+    }
+
+    if (allowed & OptionFillRule)
+    {
+        const char *s = ReadStringField(L, arg, "fillRule");
+        if (s && std::strcmp(s, "nonZero") == 0) result.fillRule = PathFillRule::NonZero;
+        else if (s && std::strcmp(s, "evenOdd") == 0) result.fillRule = PathFillRule::EvenOdd;
+        else if (s) luaL_error(L, "Invalid fillRule '%s'; expected 'nonZero' or 'evenOdd'", s);
+    }
+
+    if (allowed & OptionIntersections)
+    {
+        const char *s = ReadStringField(L, arg, "intersections");
+        if (s && std::strcmp(s, "error") == 0) result.intersections = PathIntersectionMode::Error;
+        else if (s && std::strcmp(s, "resolve") == 0) result.intersections = PathIntersectionMode::Resolve;
+        else if (s) luaL_error(L, "Invalid intersections '%s'; expected 'error' or 'resolve'", s);
+    }
+
+    if (allowed & OptionClipperPrecision)
+    {
+        lua_getfield(L, arg, "clipperPrecision");
+        if (!lua_isnil(L, -1))
+        {
+            if (lua_type(L, -1) != LUA_TNUMBER)
+                luaL_error(L, "Option 'clipperPrecision' must be an integer from -8 through 8");
+            lua_Number number = lua_tonumber(L, -1);
+            if (!std::isfinite(static_cast<double>(number)) ||
+                std::floor(static_cast<double>(number)) != number ||
+                number < -8.0 || number > 8.0)
+                luaL_error(L, "Option 'clipperPrecision' must be an integer from -8 through 8");
+            result.clipperPrecision = static_cast<int>(number);
+        }
+        lua_pop(L, 1);
     }
 
     if (allowed & OptionClosed) result.closed = ReadBooleanField(L, arg, "closed", result.closed);

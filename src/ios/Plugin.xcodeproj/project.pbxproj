@@ -18,6 +18,12 @@
 		AA00000000000000000000BA /* earcut_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000AA /* earcut_module.cpp */; };
 		AA00000000000000000000BB /* mesh_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000AB /* mesh_module.cpp */; };
 		AA00000000000000000000BC /* bezier_path.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000AC /* bezier_path.cpp */; };
+		AA00000000000000000000BD /* retained_shape.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000AD /* retained_shape.cpp */; };
+		AA1111111111111111111101 /* clipper2_bridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111111 /* clipper2_bridge.cpp */; };
+		AA1111111111111111111102 /* clipper2_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111112 /* clipper2_module.cpp */; };
+		AA1111111111111111111103 /* clipper.engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111113 /* clipper.engine.cpp */; };
+		AA1111111111111111111104 /* clipper.offset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111114 /* clipper.offset.cpp */; };
+		AA1111111111111111111105 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111115 /* clipper.rectclip.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +38,12 @@
 		AA00000000000000000000AA /* earcut_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = earcut_module.cpp; path = ../shared/earcut_module.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000AB /* mesh_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = mesh_module.cpp; path = ../shared/mesh_module.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000AC /* bezier_path.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = bezier_path.cpp; path = ../shared/bezier_path.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000000000000000000AD /* retained_shape.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = retained_shape.cpp; path = ../shared/retained_shape.cpp; sourceTree = SOURCE_ROOT; };
+		AA1111111111111111111111 /* clipper2_bridge.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper2_bridge.cpp; path = ../shared/clipper2_bridge.cpp; sourceTree = SOURCE_ROOT; };
+		AA1111111111111111111112 /* clipper2_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper2_module.cpp; path = ../shared/clipper2_module.cpp; sourceTree = SOURCE_ROOT; };
+		AA1111111111111111111113 /* clipper.engine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper.engine.cpp; path = ../../third_party/clipper2/CPP/Clipper2Lib/src/clipper.engine.cpp; sourceTree = SOURCE_ROOT; };
+		AA1111111111111111111114 /* clipper.offset.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper.offset.cpp; path = ../../third_party/clipper2/CPP/Clipper2Lib/src/clipper.offset.cpp; sourceTree = SOURCE_ROOT; };
+		AA1111111111111111111115 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper.rectclip.cpp; path = ../../third_party/clipper2/CPP/Clipper2Lib/src/clipper.rectclip.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000A0 /* libplugin_geometry2d.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libplugin_geometry2d.a; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -60,6 +72,12 @@
 				AA00000000000000000000AA /* earcut_module.cpp */,
 				AA00000000000000000000AB /* mesh_module.cpp */,
 				AA00000000000000000000AC /* bezier_path.cpp */,
+				AA00000000000000000000AD /* retained_shape.cpp */,
+				AA1111111111111111111111 /* clipper2_bridge.cpp */,
+				AA1111111111111111111112 /* clipper2_module.cpp */,
+				AA1111111111111111111113 /* clipper.engine.cpp */,
+				AA1111111111111111111114 /* clipper.offset.cpp */,
+				AA1111111111111111111115 /* clipper.rectclip.cpp */,
 			);
 			name = shared;
 			sourceTree = "<group>";
@@ -142,6 +160,12 @@
 				AA00000000000000000000BA /* earcut_module.cpp in Sources */,
 				AA00000000000000000000BB /* mesh_module.cpp in Sources */,
 				AA00000000000000000000BC /* bezier_path.cpp in Sources */,
+				AA00000000000000000000BD /* retained_shape.cpp in Sources */,
+				AA1111111111111111111101 /* clipper2_bridge.cpp in Sources */,
+				AA1111111111111111111102 /* clipper2_module.cpp in Sources */,
+				AA1111111111111111111103 /* clipper.engine.cpp in Sources */,
+				AA1111111111111111111104 /* clipper.offset.cpp in Sources */,
+				AA1111111111111111111105 /* clipper.rectclip.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -153,7 +177,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = "$(ARCHS_STANDARD)";
-				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_CXX_LIBRARY = "libc++";
 				CODE_SIGNING_REQUIRED = NO;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
@@ -178,7 +202,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = "$(ARCHS_STANDARD)";
-				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_CXX_LIBRARY = "libc++";
 				CODE_SIGNING_REQUIRED = NO;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
@@ -202,6 +226,7 @@
 					"${SRCROOT}/Native/Corona/shared/include/lua",
 					"${SRCROOT}/../../third_party/polypartition/src",
 					"${SRCROOT}/../../third_party/earcut/include",
+					"${SRCROOT}/../../third_party/clipper2/CPP/Clipper2Lib/include",
 				);
 				PRODUCT_NAME = plugin_geometry2d;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -221,6 +246,7 @@
 					"${SRCROOT}/Native/Corona/shared/include/lua",
 					"${SRCROOT}/../../third_party/polypartition/src",
 					"${SRCROOT}/../../third_party/earcut/include",
+					"${SRCROOT}/../../third_party/clipper2/CPP/Clipper2Lib/include",
 				);
 				PRODUCT_NAME = plugin_geometry2d;
 				GCC_PREPROCESSOR_DEFINITIONS = (

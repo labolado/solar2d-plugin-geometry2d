@@ -23,4 +23,10 @@ struct MeshResult {
 int PushMeshResult(lua_State *L, const MeshResult &mesh, OutputMode output,
                    bool legacyUVs = false);
 
+// Pushes the packed descriptor consumed by mesh.path:update(). The descriptor
+// owns its buffers, so the engine may synchronously copy them without relying
+// on MeshResult storage after this call returns.
+void PushMeshUpdateDescriptor(lua_State *L, const MeshResult &mesh,
+                              bool legacyUVs = false);
+
 } // namespace Geometry2D

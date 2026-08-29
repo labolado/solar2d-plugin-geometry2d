@@ -18,6 +18,12 @@
 		G200000000000000000000CA /* earcut_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000BA /* earcut_module.cpp */; };
 		G200000000000000000000CB /* mesh_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000BB /* mesh_module.cpp */; };
 		G200000000000000000000CC /* bezier_path.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000BC /* bezier_path.cpp */; };
+		G200000000000000000000CD /* retained_shape.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000BD /* retained_shape.cpp */; };
+		G200000000000000000000CE /* clipper2_bridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000BE /* clipper2_bridge.cpp */; };
+		G200000000000000000000CF /* clipper2_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000BF /* clipper2_module.cpp */; };
+		G200000000000000000000D0 /* clipper.engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000C0 /* clipper.engine.cpp */; };
+		G200000000000000000000D1 /* clipper.offset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000C1 /* clipper.offset.cpp */; };
+		G200000000000000000000D2 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = G100000000000000000000C2 /* clipper.rectclip.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +38,12 @@
 		G100000000000000000000BA /* earcut_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = earcut_module.cpp; path = ../shared/earcut_module.cpp; sourceTree = SOURCE_ROOT; };
 		G100000000000000000000BB /* mesh_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = mesh_module.cpp; path = ../shared/mesh_module.cpp; sourceTree = SOURCE_ROOT; };
 		G100000000000000000000BC /* bezier_path.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = bezier_path.cpp; path = ../shared/bezier_path.cpp; sourceTree = SOURCE_ROOT; };
+		G100000000000000000000BD /* retained_shape.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = retained_shape.cpp; path = ../shared/retained_shape.cpp; sourceTree = SOURCE_ROOT; };
+		G100000000000000000000BE /* clipper2_bridge.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper2_bridge.cpp; path = ../shared/clipper2_bridge.cpp; sourceTree = SOURCE_ROOT; };
+		G100000000000000000000BF /* clipper2_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper2_module.cpp; path = ../shared/clipper2_module.cpp; sourceTree = SOURCE_ROOT; };
+		G100000000000000000000C0 /* clipper.engine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper.engine.cpp; path = ../../third_party/clipper2/CPP/Clipper2Lib/src/clipper.engine.cpp; sourceTree = SOURCE_ROOT; };
+		G100000000000000000000C1 /* clipper.offset.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper.offset.cpp; path = ../../third_party/clipper2/CPP/Clipper2Lib/src/clipper.offset.cpp; sourceTree = SOURCE_ROOT; };
+		G100000000000000000000C2 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper.rectclip.cpp; path = ../../third_party/clipper2/CPP/Clipper2Lib/src/clipper.rectclip.cpp; sourceTree = SOURCE_ROOT; };
 		A4430897164C70D800B9117B /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		A49186401641DDB800A39286 /* plugin_geometry2d.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = plugin_geometry2d.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -61,6 +73,12 @@
 				G100000000000000000000BA /* earcut_module.cpp */,
 				G100000000000000000000BB /* mesh_module.cpp */,
 				G100000000000000000000BC /* bezier_path.cpp */,
+				G100000000000000000000BD /* retained_shape.cpp */,
+				G100000000000000000000BE /* clipper2_bridge.cpp */,
+				G100000000000000000000BF /* clipper2_module.cpp */,
+				G100000000000000000000C0 /* clipper.engine.cpp */,
+				G100000000000000000000C1 /* clipper.offset.cpp */,
+				G100000000000000000000C2 /* clipper.rectclip.cpp */,
 			);
 			name = shared;
 			sourceTree = "<group>";
@@ -152,6 +170,12 @@
 				G200000000000000000000CA /* earcut_module.cpp in Sources */,
 				G200000000000000000000CB /* mesh_module.cpp in Sources */,
 				G200000000000000000000CC /* bezier_path.cpp in Sources */,
+				G200000000000000000000CD /* retained_shape.cpp in Sources */,
+				G200000000000000000000CE /* clipper2_bridge.cpp in Sources */,
+				G200000000000000000000CF /* clipper2_module.cpp in Sources */,
+				G200000000000000000000D0 /* clipper.engine.cpp in Sources */,
+				G200000000000000000000D1 /* clipper.offset.cpp in Sources */,
+				G200000000000000000000D2 /* clipper.rectclip.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -163,7 +187,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = "$(ARCHS_STANDARD)";
-				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_CXX_LIBRARY = "libc++";
 				COPY_PHASE_STRIP = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
@@ -189,7 +213,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = "$(ARCHS_STANDARD)";
-				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_CXX_LIBRARY = "libc++";
 				COPY_PHASE_STRIP = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
@@ -206,7 +230,7 @@
 		A491863E1641DDB800A39286 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_CXX_LIBRARY = "libc++";
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -225,6 +249,7 @@
 					"${SRCROOT}/Native/Corona/shared/include/lua",
 					"${SRCROOT}/../../third_party/polypartition/src",
 					"${SRCROOT}/../../third_party/earcut/include",
+					"${SRCROOT}/../../third_party/clipper2/CPP/Clipper2Lib/include",
 				);
 				USER_HEADER_SEARCH_PATHS = "${SRCROOT}/Native/Corona/shared/include/Corona ${SRCROOT}/Native/Corona/shared/include/lua";
 			};
@@ -233,7 +258,7 @@
 		A491863F1641DDB800A39286 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_CXX_LIBRARY = "libc++";
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -252,6 +277,7 @@
 					"${SRCROOT}/Native/Corona/shared/include/lua",
 					"${SRCROOT}/../../third_party/polypartition/src",
 					"${SRCROOT}/../../third_party/earcut/include",
+					"${SRCROOT}/../../third_party/clipper2/CPP/Clipper2Lib/include",
 				);
 				USER_HEADER_SEARCH_PATHS = "${SRCROOT}/Native/Corona/shared/include/Corona ${SRCROOT}/Native/Corona/shared/include/lua";
 			};

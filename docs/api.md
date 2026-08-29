@@ -6,7 +6,7 @@ A Solar2D native plugin for geometry computation and antialiased mesh generation
 local Geometry2D = require("plugin.geometry2d")
 ```
 
-Five submodules:
+Six submodules:
 
 | Module | Purpose |
 |--------|---------|
@@ -15,6 +15,7 @@ Five submodules:
 | `Geometry2D.fringe` | Edge-AA fringe meshes (ported from NanoVG's expandFill/expandStroke) |
 | `Geometry2D.util` | Composite helpers: complete `display.newMesh`-ready meshes in one call |
 | `Geometry2D.path` | Adaptive Bezier flattening and fill/SDF/stroke mesh generation |
+| `Geometry2D.clipper2` | Clipper2 path boolean, offset, clipping, Minkowski, and path utilities |
 
 ## Conventions
 
@@ -270,6 +271,24 @@ local data = Geometry2D.path.meshSDF(path[, opts])
 local data = Geometry2D.path.meshStroke(path, width[, opts])
 ```
 
+Fill and SDF calls reject self-intersections and intersections between contours
+by default. This avoids silently feeding ambiguous rings to earcut:
+
+```lua
+local data, err = Geometry2D.path.meshFill(path, {
+    intersections = "resolve", -- "error" (default) or "resolve"
+    fillRule = "nonZero",      -- "nonZero" (default) or "evenOdd"
+    clipperPrecision = 4,       -- decimal precision, integer from -8 through 8
+})
+```
+
+`intersections="resolve"` unions the flattened closed contours with Clipper2
+before triangulation. `fillRule="evenOdd"` also performs this normalization so
+nested contours do not need opposite winding. With `intersections="error"`, an
+actual crossing still returns `nil, message`, including under the even-odd rule.
+Clipper2 operates after Bezier flattening, so `tessTol` still controls the curve
+approximation that is normalized.
+
 Dashed strokes are generated as one combined mesh:
 
 ```lua
@@ -315,6 +334,89 @@ Quadratic curves are converted to cubic curves and all curves are adaptively
 subdivided using `tessTol`. Each cubic is capped at 10 subdivision levels, and
 `maxCurvePoints` limits the points in one contour.
 
+### Retained mutable shapes
+
+`path.newShape()` keeps the path commands and styles in native memory and
+provides ThorVG-like chained editing without exposing a ThorVG paint or canvas:
+
+```lua
+local shape = Geometry2D.path.newShape()
+shape:moveTo(199, 34)
+    :lineTo(253, 143)
+    :lineTo(374, 160)
+    :lineTo(287, 244)
+    :lineTo(307, 365)
+    :lineTo(199, 309)
+    :lineTo(97, 365)
+    :lineTo(112, 245)
+    :lineTo(26, 161)
+    :lineTo(146, 143)
+    :close()
+    :fill(0.59, 0.59, 1)
+    :strokeWidth(3)
+    :strokeFill(0, 0, 1)
+    :strokeJoin("round")
+    :strokeCap("round")
+    :strokeDash({10, 10})
+
+local view, err = shape:newView()
+assert(view, err)
+view.group.x, view.group.y = display.contentCenterX, display.contentCenterY
+
+shape:setCommand(2, "L", 260, 150)
+local updated, childReplaced = shape:updateView(view)
+assert(updated, childReplaced)
+```
+
+`newShape(pathTable)` may import the same absolute command table accepted by
+`path.flatten()`. Path-building and style methods return the shape, so calls may
+be chained. Colors use Solar2D's normalized `0..1` range. Fill defaults to
+opaque white; stroke defaults to width `0` (disabled). `fill(false)` and
+`strokeFill(false)` disable a part, while `strokeDash(nil)` restores a solid
+stroke.
+
+| Method | Purpose |
+|--------|---------|
+| `moveTo(x,y)`, `lineTo(x,y)` | Append an absolute path command |
+| `quadraticTo(cx,cy,x,y)` | Append a quadratic command |
+| `cubicTo(c1x,c1y,c2x,c2y,x,y)` | Append a cubic command |
+| `close()` / `clear()` | Close the current contour / remove all commands |
+| `setCommand(index, name, ...)` | Replace one command; `name` is an accepted short or long absolute command |
+| `removeCommand(index)` / `commandCount()` | Remove or count commands |
+| `fill(r,g,b[,a])` / `fill(false)` | Set or disable fill color |
+| `fillJoin(join)` | Set the fill fringe join |
+| `strokeWidth(width)` | Set stroke width; zero disables stroke geometry |
+| `strokeFill(r,g,b[,a])` / `strokeFill(false)` | Set or disable stroke color |
+| `strokeJoin(join)` / `strokeCap(cap)` | Set stroke corner and cap styles |
+| `strokeDash(pattern[,offset])` | Set a positive dense dash array and phase; pass `nil` to clear |
+| `configure(opts)` | Merge geometry options into the current configuration |
+| `newView()` | Create a retained view table |
+| `updateView(view)` | Synchronize one view after shape changes |
+
+`configure()` accepts only `fringe`, `miterLimit`, `tessTol`, `refine`, `mode`,
+`maxCurvePoints`, `maxDashSegments`, `fillRule`, `intersections`, and
+`clipperPrecision`. Omitted fields retain their current values. Fill and stroke
+join styles and the stroke cap/dash are deliberately set by their named methods.
+Retained views always use packed buffers internally; there is no `output` option.
+
+A view owns a stable `view.group`, with current internal display meshes exposed
+as `view.fillMesh` and `view.strokeMesh`. Geometry edits always rebuild the
+native tessellation cache. If the new mesh has compatible mode, vertex count,
+and index count, `updateView()` writes packed vertices, indices, and vertex
+colors through `mesh.path:update()` and preserves the child mesh object. If the
+topology is incompatible, only that internal child is replaced; `view.group`
+remains stable. The second success result is `true` when any child was added,
+removed, or replaced, otherwise `false`.
+
+Color-only edits call `setFillColor()` and do not tessellate. Display transforms
+belong on `view.group` and likewise do not tessellate. A view retains its shape;
+remove `view.group` when the display is no longer needed. Do not replace the
+view's documented fields or reuse it with another shape.
+
+Contract violations raise Lua errors. Tessellation/display creation failures
+from `newView()` return `nil, message`; failures from `updateView()` also return
+`nil, message`.
+
 Fill/SDF functions treat every subpath as closed. Clockwise screen-space
 subpaths are outer contours; counterclockwise subpaths are holes, assigned to
 the smallest containing outer contour. Stroke closure follows `Z`; setting
@@ -345,11 +447,92 @@ renderer feature is enabled and the render state is compatible.
 | Function | Accepted options |
 |----------|------------------|
 | `path.flatten` | `tessTol`, `maxCurvePoints` |
-| `util/path.meshFill` | `fringe`, `join`, `miterLimit`, `tessTol`, `refine`, `mode`, `output`, `legacyUVs` |
-| `util/path.meshSDF` | `distance`, `distanceSign`, `join`, `miterLimit`, `tessTol`, `refine`, `mode`, `output`, `legacyUVs` |
+| `util.meshFill` | `fringe`, `join`, `miterLimit`, `tessTol`, `refine`, `mode`, `output`, `legacyUVs` |
+| `path.meshFill` | `fringe`, `join`, `miterLimit`, `tessTol`, `refine`, `mode`, `output`, `legacyUVs`, `fillRule`, `intersections`, `clipperPrecision` |
+| `util.meshSDF` | `distance`, `distanceSign`, `join`, `miterLimit`, `tessTol`, `refine`, `mode`, `output`, `legacyUVs` |
+| `path.meshSDF` | `distance`, `distanceSign`, `join`, `miterLimit`, `tessTol`, `refine`, `mode`, `output`, `legacyUVs`, `fillRule`, `intersections`, `clipperPrecision` |
 | `path.meshStroke` | `fringe`, `cap`, `join`, `miterLimit`, `tessTol`, `closed`, `dashPattern`, `dashOffset`, `maxDashSegments`, `mode`, `output`, `legacyUVs` |
 
 The three `path.mesh*` functions additionally accept `maxCurvePoints`.
+
+## clipper2
+
+`Geometry2D.clipper2` is an independent Lua sublibrary inside
+`plugin.geometry2d`. Its name deliberately differs from the existing Solar2D
+Marketplace `plugin.clipper`, which wraps the older Clipper generation. This
+module binds Clipper2 2.x and exposes `clipper2.version`; it is not a separate
+`require("plugin.clipper2")` entry point.
+
+Clipper2 paths are dense flat coordinate arrays, and path collections are dense
+arrays of paths:
+
+```lua
+local C = Geometry2D.clipper2
+local subject = {{0,0, 100,0, 100,100, 0,100}}
+local clip = {{50,50, 150,50, 150,150, 50,150}}
+
+local overlap = C.intersection(subject, clip, {
+    fillRule = "nonZero",
+    precision = 2,
+})
+local outline = C.union({subject[1], clip[1]})
+local cut = C.difference(subject, clip)
+local toggled = C.xor(subject, clip)
+```
+
+Boolean options are `fillRule` (`"evenOdd"`, `"nonZero"`, `"positive"`, or
+`"negative"`), `precision` (`-8..8`), `preserveCollinear`, and
+`reverseSolution`. `union()` accepts one combined subject collection;
+`intersection()`, `difference()`, and `xor()` accept separate subject and clip
+collections.
+
+The lower-level boolean entry point also supports open subjects and hierarchy:
+
+```lua
+local result = C.booleanOp("intersection", subjects, clips, {
+    openSubjects = {{-20,50, 120,50}},
+    polyTree = true,
+})
+-- result.tree: root nodes {polygon, isHole, children}
+-- result.open: clipped open paths
+```
+
+Without `polyTree=true`, `booleanOp()` returns `{closed=..., open=...}`. Its clip
+type is `"intersection"`, `"union"`, `"difference"`, or `"xor"`. Pass an empty
+table or `nil` for `clips` when a union has no separate clip collection.
+
+The remaining mature geometry operations are available as stateless functions:
+
+| Function | Purpose / options |
+|----------|-------------------|
+| `inflate(paths, delta[, opts])` | Offset closed or open paths; `delta` may be a number or nested per-vertex arrays; `joinType`, `endType`, `miterLimit`, `arcTolerance`, `precision`, `preserveCollinear`, `reverseSolution`, `polyTree` |
+| `rectClip(rect, paths[, opts])` | Clip closed paths to `{left,top,right,bottom}` |
+| `rectClipLines(rect, lines[, opts])` | Clip open lines to a rectangle |
+| `minkowskiSum(pattern, path[, opts])` / `minkowskiDiff(...)` | Minkowski operations; `closed`, `precision` |
+| `simplify(paths, epsilon[, opts])` | Clipper2 simplify; `closed` defaults true |
+| `ramerDouglasPeucker(paths, epsilon)` | RDP path reduction |
+| `trimCollinear(path[, opts])` | Remove collinear vertices; `closed`, `precision` |
+| `stripDuplicates(path[, opts])` / `stripNearEqual(path, distance[, opts])` | Remove repeated or near-equal vertices |
+| `translate(paths, dx, dy)` / `reverse(paths)` | Transform path collections |
+| `area(paths)` / `isPositive(path)` / `length(path[, closed])` | Measurements and orientation |
+| `pointInPolygon(point, path)` | Returns `"inside"`, `"outside"`, or `"on"` |
+| `getBounds(paths)` | Returns both `{left,top,right,bottom}` and named fields, or `nil` for no paths |
+| `pathContains(inner, outer)` / `closestPoint(point, a, b)` | Containment and nearest point helpers |
+| `ellipse(cx, cy, rx[, ry][, opts])` | Create an ellipse path; `opts.steps` controls tessellation |
+
+`joinType` is `"square"`, `"bevel"`, `"round"`, or `"miter"`. `endType` is
+`"polygon"`, `"joined"`, `"butt"`, `"square"`, or `"round"`. All coordinate
+tables are strictly dense and contain finite-float values. Contract violations
+raise; Clipper2 range or algorithm failures return `nil, message`.
+
+Clipper2's experimental triangulation implementation is deliberately neither
+linked nor exposed as Lua API. Use `Geometry2D.earcut` or the path mesh APIs
+for triangulation.
+
+For a variable offset, pass one dense delta array per input path, with one value
+per path vertex. Variable deltas expose Clipper2's mature delta-callback offset
+without calling Lua once per generated corner. They currently return flat paths;
+combining variable deltas with `polyTree=true` is a contract error.
 
 ## Example
 

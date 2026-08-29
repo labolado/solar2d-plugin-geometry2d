@@ -169,6 +169,82 @@ RunTest("Bezier table, buffer, and direct-mesh output", function()
     directStroke:removeSelf()
 end)
 
+RunTest("Clipper2 path intersection policy", function()
+    local bowTie = {
+        {"M", 0, 0}, {"L", 100, 100}, {"L", 0, 100},
+        {"L", 100, 0}, {"Z"},
+    }
+    local rejected, rejectError = Geometry2D.path.meshFill(bowTie, {fringe = 0})
+    assert(rejected == nil)
+    assert(type(rejectError) == "string" and
+        rejectError:find("intersect", 1, true), rejectError)
+
+    local resolved, resolveError = Geometry2D.path.meshFill(bowTie, {
+        fringe = 0,
+        intersections = "resolve",
+        fillRule = "evenOdd",
+    })
+    assert(resolved, resolveError)
+    assert(#resolved.indices > 0)
+
+    local sameWindingHole, sameWindingError = Geometry2D.path.meshFill({
+        {"M", 0, 0}, {"L", 100, 0}, {"L", 100, 100}, {"L", 0, 100}, {"Z"},
+        {"M", 25, 25}, {"L", 75, 25}, {"L", 75, 75}, {"L", 25, 75}, {"Z"},
+    }, {fringe = 0, fillRule = "evenOdd"})
+    assert(sameWindingHole, sameWindingError)
+    assert(#sameWindingHole.indices > 0)
+
+    ExpectRaisedMessage("Invalid intersections", Geometry2D.path.meshFill,
+        bowTie, {intersections = "clip"})
+    ExpectRaisedMessage("clipperPrecision", Geometry2D.path.meshFill,
+        bowTie, {clipperPrecision = 9})
+end)
+
+RunTest("Clipper2 independent sublibrary", function()
+    local C = Geometry2D.clipper2
+    assert(type(C.version) == "string" and #C.version > 0)
+    local a = {0,0, 100,0, 100,100, 0,100}
+    local b = {50,50, 150,50, 150,150, 50,150}
+
+    local intersection = assert(C.intersection({a}, {b}))
+    assert(math.abs(C.area(intersection) - 2500) < 0.01)
+    local union = assert(C.union({a, b}))
+    assert(math.abs(C.area(union) - 17500) < 0.01)
+    local difference = assert(C.difference({a}, {b}))
+    assert(math.abs(C.area(difference) - 7500) < 0.01)
+    local xorResult = assert(C.xor({a}, {b}))
+    assert(math.abs(C.area(xorResult) - 15000) < 0.01)
+
+    local generic = assert(C.booleanOp("difference", {a}, {b}, {polyTree = true}))
+    assert(type(generic.tree) == "table" and type(generic.open) == "table")
+    local open = assert(C.booleanOp("intersection", {}, {a}, {
+        openSubjects = {{-20,50, 120,50}},
+    }))
+    assert(#open.closed == 0 and #open.open == 1)
+
+    local inflated = assert(C.inflate({a}, 5, {
+        joinType = "round", endType = "polygon",
+    }))
+    assert(math.abs(C.area(inflated)) > math.abs(C.area({a})))
+    local variableInflated = assert(C.inflate({a}, {{2, 4, 6, 8}}, {
+        joinType = "miter", endType = "polygon",
+    }))
+    assert(#variableInflated > 0)
+    local clippedLine = C.rectClipLines({0,0, 100,100}, {{-20,50, 120,50}})
+    assert(#clippedLine == 1 and math.abs(C.length(clippedLine[1]) - 100) < 0.01)
+    assert(#C.minkowskiSum({-1,-1, 1,-1, 1,1, -1,1}, {0,0, 10,0}) > 0)
+
+    local simplified = C.simplify({{0,0, 25,0.01, 50,0, 50,50, 0,50}}, 0.1)
+    assert(#simplified[1] < 10)
+    local bounds = C.getBounds({a, b})
+    assert(bounds.left == 0 and bounds.top == 0 and bounds.right == 150 and bounds.bottom == 150)
+    assert(C.pointInPolygon({20,20}, a) == "inside")
+    assert(C.isPositive(a))
+    assert(#C.ellipse(0, 0, 10, 5, {steps = 12}) == 24)
+    ExpectRaisedMessage("only array entries", C.union,
+        {{0,0, 10,0, 0,10, extra = true}})
+end)
+
 RunTest("dashed stroke output and validation", function()
     local straightPath = {{"M", 0, 0}, {"L", 100, 0}}
     local solidStroke = Geometry2D.path.meshStroke(straightPath, 8, {
@@ -207,6 +283,54 @@ RunTest("dashed stroke output and validation", function()
 
     print(("Dashed stroke mesh: %d vertices for five butt-cap dashes"):format(
         #dashedStroke.alphas))
+end)
+
+RunTest("retained Bezier shape and stable view updates", function()
+    local shape = Geometry2D.path.newShape()
+    assert(shape:moveTo(0, 0) == shape)
+    assert(shape:lineTo(80, 0):lineTo(80, 80):lineTo(0, 80):close() == shape)
+    assert(shape:commandCount() == 5)
+    shape:fill(0.2, 0.55, 1, 0.8)
+        :strokeWidth(6)
+        :strokeFill(1, 0.8, 0.2)
+        :strokeJoin("miter")
+        :strokeCap("butt")
+        :configure({fringe = 1, mode = "indexed"})
+
+    local view, createError = shape:newView()
+    assert(view, createError)
+    assert(view.group and view.fillMesh and view.strokeMesh)
+    local group = view.group
+    local fillMesh = view.fillMesh
+    local strokeMesh = view.strokeMesh
+
+    shape:setCommand(2, "L", 84, 0)
+    local updated, replaced = shape:updateView(view)
+    assert(updated == view)
+    assert(replaced == false, "same topology should use mesh.path:update()")
+    assert(view.group == group and view.fillMesh == fillMesh and view.strokeMesh == strokeMesh)
+
+    shape:fill(0.9, 0.25, 0.35, 0.7)
+    updated, replaced = shape:updateView(view)
+    assert(updated == view and replaced == false)
+    assert(view.fillMesh == fillMesh, "style-only update replaced fill mesh")
+
+    shape:clear():moveTo(0, 0):lineTo(90, 0):lineTo(45, 75):close()
+    updated, replaced = shape:updateView(view)
+    assert(updated == view and replaced == true)
+    assert(view.group == group, "topology update replaced the stable view group")
+    assert(view.fillMesh ~= fillMesh or view.strokeMesh ~= strokeMesh)
+
+    local imported = Geometry2D.path.newShape(bezier)
+    assert(imported:commandCount() == #bezier)
+    ExpectRaisedMessage("before moveTo", Geometry2D.path.newShape, {{"L", 1, 2}})
+    ExpectRaisedMessage("only array entries", shape.strokeDash, shape, {10, 10, extra = true})
+    ExpectRaisedMessage("between 0 and 1", shape.fill, shape, 2, 0, 0)
+    ExpectRaisedMessage("does not accept option", shape.configure, shape, {output = "mesh"})
+
+    local otherShape = Geometry2D.path.newShape(bezier)
+    ExpectRaisedMessage("belongs to another", otherShape.updateView, otherShape, view)
+    group:removeSelf()
 end)
 
 -- The render geometry used by fillExtendedData is populated asynchronously.

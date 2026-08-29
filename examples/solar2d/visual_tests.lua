@@ -772,7 +772,32 @@ do
 end
 
 -- -------------------------------------------------------------------
--- Test 26: path.meshStroke — dashed five-point star
+-- Test 26: path.meshFill — Clipper2 self-intersection resolution
+-- -------------------------------------------------------------------
+do
+    local ox, oy = Pos(6, 2)
+    local bowTie = {
+        {"M", 0, 0}, {"L", 90, 80}, {"L", 0, 80},
+        {"L", 90, 0}, {"Z"},
+    }
+    local resolved, err = Geometry2D.path.meshFill(bowTie, {
+        intersections = "resolve",
+        fillRule = "evenOdd",
+        fringe = 2,
+        join = "round",
+    })
+    assert(resolved, err)
+    FringeMesh(resolved, ox, oy, 0.35, 0.9, 0.7)
+
+    local t = display.newText({
+        text = "Clipper2 / resolved bow-tie", x = ox + 45, y = oy - 10,
+        fontSize = 10,
+    })
+    t:setFillColor(1, 1, 1)
+end
+
+-- -------------------------------------------------------------------
+-- Test 27: path.meshStroke — dashed five-point star
 -- -------------------------------------------------------------------
 do
     local ox, oy = Pos(6.5, 4)
@@ -816,6 +841,39 @@ end
 -- -------------------------------------------------------------------
 -- Footer
 -- -------------------------------------------------------------------
+do
+    local ox, oy = Pos(6, 0)
+    local shape = Geometry2D.path.newShape()
+    shape:moveTo(0, 45)
+        :cubicTo(25, -15, 85, 105, 115, 45)
+        :fill(false)
+        :strokeWidth(3)
+        :strokeFill(0.35, 0.85, 1)
+        :strokeCap("round")
+        :strokeJoin("round")
+        :strokeDash({14, 8}, -3)
+
+    local view, err = shape:newView()
+    assert(view, err)
+    view.group.x, view.group.y = ox, oy
+
+    local phase = 0
+    timer.performWithDelay(120, function()
+        if not view.group.removeSelf then return end
+        phase = phase + 0.22
+        shape:setCommand(2, "C", 25, -15 + math.sin(phase) * 12,
+            85, 105 + math.sin(phase) * 12, 115, 45)
+        local updated, updateError = shape:updateView(view)
+        if not updated then error(updateError, 0) end
+    end, 0)
+
+    local t = display.newText({
+        text = "retained Shape / mutable dashed curve", x = ox + 58, y = oy - 18,
+        fontSize = 10,
+    })
+    t:setFillColor(1, 1, 1)
+end
+
 local instructions = display.newText({
     text = "Visual tests — inspect the rendered geometry",
     x = CX, y = H - 30, fontSize = 12,

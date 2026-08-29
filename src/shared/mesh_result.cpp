@@ -201,4 +201,10 @@ int PushMeshResult(lua_State *L, const MeshResult &mesh, OutputMode output,
     }
 }
 
+void PushMeshUpdateDescriptor(lua_State *L, const MeshResult &mesh,
+                              bool legacyUVs)
+{
+    PushGeometryBufferTable(L, mesh, legacyUVs);
+}
+
 } // namespace Geometry2D

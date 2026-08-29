@@ -22,6 +22,16 @@ enum class OutputMode {
     Mesh,
 };
 
+enum class PathFillRule {
+    NonZero,
+    EvenOdd,
+};
+
+enum class PathIntersectionMode {
+    Error,
+    Resolve,
+};
+
 enum MeshOption : uint32_t {
     OptionFringe        = 1u << 0,
     OptionJoin          = 1u << 1,
@@ -39,6 +49,9 @@ enum MeshOption : uint32_t {
     OptionDashPattern   = 1u << 13,
     OptionDashOffset    = 1u << 14,
     OptionMaxDashSegments = 1u << 15,
+    OptionFillRule       = 1u << 16,
+    OptionIntersections  = 1u << 17,
+    OptionClipperPrecision = 1u << 18,
 };
 
 struct MeshOptions {
@@ -57,6 +70,9 @@ struct MeshOptions {
     std::vector<float> dashPattern;
     float dashOffset = 0.0f;
     size_t maxDashSegments = 4096;
+    PathFillRule fillRule = PathFillRule::NonZero;
+    PathIntersectionMode intersections = PathIntersectionMode::Error;
+    int clipperPrecision = 4;
     OutputMode output = OutputMode::Table;
 };
 
@@ -73,7 +89,8 @@ void FlattenPolygon(const Polygon &poly, std::vector<Point> &coords);
 int PushGeometryFailure(lua_State *L, const char *message);
 
 MeshOptions GetMeshOptions(lua_State *L, int arg, uint32_t allowed,
-                           const char *context);
+                           const char *context,
+                           const MeshOptions *defaults = nullptr);
 int GetMaxVertices(lua_State *L, int arg);
 
 void RegisterPolypartition(lua_State *L);
@@ -81,5 +98,7 @@ void RegisterEarcut(lua_State *L);
 void RegisterFringe(lua_State *L);
 void RegisterUtil(lua_State *L);
 void RegisterPath(lua_State *L);
+void RegisterRetainedShape(lua_State *L);
+void RegisterClipper2(lua_State *L);
 
 } // namespace Geometry2D
