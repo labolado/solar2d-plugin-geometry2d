@@ -7,6 +7,7 @@
 #include "fringe.h"
 
 #include <cmath>
+#include <array>
 
 namespace Fringe {
 
@@ -597,15 +598,16 @@ void ExpandFill(const std::vector<FillRing> &rings,
         //   hole  (fill outside) → toward the interior
         float s = areaSign * (hole ? -1.0f : 1.0f);
 
-        // Per-vertex outward normals and miter directions. The outward
-        // normals of both adjacent edges point into the exterior wedge, so
-        // the skirt corner (miter/bevel/round) is the same construction for
-        // convex and reflex corners alike.
+        // Convex turns need a join wedge; reflex turns instead partition
+        // overlapping edge rectangles at their common angle bisector.
         std::vector<float> nxIn(n), nyIn(n), nxOut(n), nyOut(n), mx(n), my(n);
+        std::vector<bool> reflex(n);
 
         for (size_t i = 0; i < n; ++i) {
             const Point &p0 = pts[(i + n - 1) % n];  // incoming edge
             const Point &p1 = pts[i];                // outgoing edge
+            reflex[i] = s * (static_cast<double>(p0.dx) * p1.dy -
+                             static_cast<double>(p0.dy) * p1.dx) < 0.0;
             nxIn[i]  = s *  p0.dy;
             nyIn[i]  = s * -p0.dx;
             nxOut[i] = s *  p1.dy;
@@ -636,12 +638,49 @@ void ExpandFill(const std::vector<FillRing> &rings,
             float oxj = pts[j].x + nxIn[j] * fringe;
             float oyj = pts[j].y + nyIn[j] * fringe;
 
-            pushV(out, pts[i].x, pts[i].y, 0, 1, 1);
-            pushV(out, oxi, oyi, 1, 1, 0);
-            pushV(out, oxj, oyj, 1, 1, 0);
-            pushV(out, pts[i].x, pts[i].y, 0, 1, 1);
-            pushV(out, oxj, oyj, 1, 1, 0);
-            pushV(out, pts[j].x, pts[j].y, 0, 1, 1);
+            struct BandPoint { double x, y, u; };
+            std::array<BandPoint, 8> cell{{
+                {pts[i].x, pts[i].y, 0}, {oxi, oyi, 1},
+                {oxj, oyj, 1}, {pts[j].x, pts[j].y, 0}}};
+            size_t count = 4;
+            auto clipJoin = [&](size_t corner, double sign) {
+                if (!reflex[corner] || !count) return;
+                const Point &before = pts[(corner + n - 1) % n];
+                const Point &after = pts[corner];
+                const double tx = sign * (static_cast<double>(before.dx) + after.dx);
+                const double ty = sign * (static_cast<double>(before.dy) + after.dy);
+                auto distance = [&](const BandPoint &p) {
+                    return tx * (p.x - after.x) + ty * (p.y - after.y);
+                };
+                std::array<BandPoint, 8> clipped{};
+                size_t used = 0;
+                BandPoint previous = cell[count - 1];
+                double previousDistance = distance(previous);
+                for (size_t k = 0; k < count; ++k) {
+                    const BandPoint current = cell[k];
+                    const double d = distance(current);
+                    if ((d <= 0) != (previousDistance <= 0)) {
+                        const double t = previousDistance / (previousDistance - d);
+                        clipped[used++] = {previous.x + t * (current.x - previous.x),
+                            previous.y + t * (current.y - previous.y),
+                            previous.u + t * (current.u - previous.u)};
+                    }
+                    if (d <= 0) clipped[used++] = current;
+                    previous = current; previousDistance = d;
+                }
+                cell = clipped; count = used;
+            };
+            clipJoin(i, -1); // outgoing half-plane
+            clipJoin(j, 1);  // incoming half-plane
+            auto emit = [&](const BandPoint &p) {
+                pushV(out, static_cast<float>(p.x), static_cast<float>(p.y),
+                      static_cast<float>(p.u), 1, static_cast<float>(1 - p.u));
+            };
+            for (size_t k = 1; k + 1 < count; ++k) {
+                const auto &a = cell[0], &b = cell[k], &c = cell[k + 1];
+                if ((b.x-a.x)*(c.y-a.y) == (b.y-a.y)*(c.x-a.x)) continue;
+                emit(a); emit(b); emit(c);
+            }
         }
 
         // Corner triangles between adjacent edge quads.
@@ -649,6 +688,7 @@ void ExpandFill(const std::vector<FillRing> &rings,
             const Point &p0 = pts[(i + n - 1) % n];
             const Point &p1 = pts[i];
             if (p0.len < 1e-6f || p1.len < 1e-6f) continue;  // degenerate corner
+            if (reflex[i]) continue; // clipped bands already cover this corner
 
             // Collinear corners (both normals parallel) need no fill — the
             // edge quads meet flush.
@@ -667,8 +707,8 @@ void ExpandFill(const std::vector<FillRing> &rings,
             bool miterOk = (rdmr2 * miterLimit * miterLimit) >= 1.0f && join == JOIN_MITER;
 
             if (join == JOIN_ROUND) {
-                // Arc through the exterior wedge — always the short way
-                // between the outward normals (convex and reflex alike).
+                // Arc through the convex exterior wedge, taking the short way
+                // between the outward normals. Reflex turns were clipped above.
                 float a0 = atan2f(nyIn[i], nxIn[i]);
                 float a1 = atan2f(nyOut[i], nxOut[i]);
                 float da = a1 - a0;
@@ -684,11 +724,14 @@ void ExpandFill(const std::vector<FillRing> &rings,
                     pushV(out, p1.x + cosf(aB) * fringe, p1.y + sinf(aB) * fringe, 1, 1, 0);
                 }
             } else if (miterOk) {
-                // Miter triangle (the miter bisects the exterior wedge for
-                // convex and reflex corners alike).
+                // Complete convex wedge, split at the miter. Both halves
+                // interpolate from the true boundary, matching the edge bands.
                 float mxi = p1.x + mx[i] * fringe;
                 float myi = p1.y + my[i] * fringe;
+                pushV(out, p1.x, p1.y, 0, 1, 1);
                 pushV(out, oxi, oyi, 1, 1, 0);
+                pushV(out, mxi, myi, 1, 1, 0);
+                pushV(out, p1.x, p1.y, 0, 1, 1);
                 pushV(out, mxi, myi, 1, 1, 0);
                 pushV(out, oxo, oyo, 1, 1, 0);
             } else {

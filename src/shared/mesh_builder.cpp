@@ -29,6 +29,9 @@ static bool AppendFillGroup(const Polygon &poly, const MeshOptions &options, flo
     for (const auto &source : poly)
     {
         Fringe::FillRing ring;
+        // Polygon groups already identify outer/hole roles. Do not infer
+        // them again from winding: earcut accepts either orientation.
+        ring.hole = rings.empty() ? 0 : 1;
         ring.points.reserve(source.size());
         for (const auto &point : source)
             ring.points.push_back({static_cast<float>(point[0]), static_cast<float>(point[1])});

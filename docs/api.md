@@ -437,6 +437,16 @@ local data = Geometry2D.util.meshSDF(poly[, opts])
 local data = Geometry2D.util.meshSDFGroups(groups[, opts])
 ```
 
+Fill skirts partition adjacent edge bands at reflex corners; their distance
+(or alpha) agrees at the shared bisector. Convex corners retain the requested
+bevel/round/limited-miter join. Group outer/hole roles are explicit and do not
+depend on input winding; body triangulation and the original boundary are unchanged.
+This is a local join correction, not a global offset union: bands from
+non-adjacent edges, different rings or groups can still overlap when the band
+width exceeds a local gap (including a small hole). Short edges can bring such
+non-adjacent bands together. Choose a narrower band for these cases; this API
+does not guarantee a globally non-overlapping SDF mesh for arbitrary widths.
+
 SDF fragment shader recipe:
 
 ```glsl
