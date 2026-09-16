@@ -115,6 +115,8 @@ copy /Y "$(TargetPath)" "%APPDATA%\Corona Labs\Corona Simulator\Plugins\"</Comma
     <ClCompile Include="..\shared\retained_shape.cpp" />
     <ClCompile Include="..\shared\clipper2_bridge.cpp" />
     <ClCompile Include="..\shared\clipper2_module.cpp" />
+    <ClCompile Include="..\shared\ribbon_builder.cpp" />
+    <ClCompile Include="..\shared\ribbon_module.cpp" />
     <ClCompile Include="..\shared\fringe.cpp" />
     <ClCompile Include="..\..\third_party\polypartition\src\polypartition.cpp" />
     <ClCompile Include="..\..\third_party\clipper2\CPP\Clipper2Lib\src\clipper.engine.cpp" />

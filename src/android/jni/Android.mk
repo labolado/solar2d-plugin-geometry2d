@@ -48,6 +48,8 @@ LOCAL_SRC_FILES := $(SRC_DIR)/plugin_geometry2d.cpp \
 	$(SRC_DIR)/retained_shape.cpp \
 	$(SRC_DIR)/clipper2_bridge.cpp \
 	$(SRC_DIR)/clipper2_module.cpp \
+	$(SRC_DIR)/ribbon_builder.cpp \
+	$(SRC_DIR)/ribbon_module.cpp \
     $(SRC_DIR)/fringe.cpp \
     $(THIRD_PARTY)/polypartition/src/polypartition.cpp \
     $(CLIPPER2_DIR)/src/clipper.engine.cpp \

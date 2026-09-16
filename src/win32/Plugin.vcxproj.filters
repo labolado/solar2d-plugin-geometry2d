@@ -43,6 +43,12 @@
     <ClCompile Include="..\shared\clipper2_module.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\shared\ribbon_builder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\shared\ribbon_module.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\shared\fringe.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

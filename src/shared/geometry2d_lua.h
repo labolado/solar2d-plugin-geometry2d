@@ -100,5 +100,6 @@ void RegisterUtil(lua_State *L);
 void RegisterPath(lua_State *L);
 void RegisterRetainedShape(lua_State *L);
 void RegisterClipper2(lua_State *L);
+void RegisterRibbon(lua_State *L);
 
 } // namespace Geometry2D

@@ -24,6 +24,8 @@
 		AA1111111111111111111103 /* clipper.engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111113 /* clipper.engine.cpp */; };
 		AA1111111111111111111104 /* clipper.offset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111114 /* clipper.offset.cpp */; };
 		AA1111111111111111111105 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111115 /* clipper.rectclip.cpp */; };
+		AA1111111111111111111106 /* ribbon_builder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111116 /* ribbon_builder.cpp */; };
+		AA1111111111111111111107 /* ribbon_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111117 /* ribbon_module.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +46,8 @@
 		AA1111111111111111111113 /* clipper.engine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper.engine.cpp; path = ../../third_party/clipper2/CPP/Clipper2Lib/src/clipper.engine.cpp; sourceTree = SOURCE_ROOT; };
 		AA1111111111111111111114 /* clipper.offset.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper.offset.cpp; path = ../../third_party/clipper2/CPP/Clipper2Lib/src/clipper.offset.cpp; sourceTree = SOURCE_ROOT; };
 		AA1111111111111111111115 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = clipper.rectclip.cpp; path = ../../third_party/clipper2/CPP/Clipper2Lib/src/clipper.rectclip.cpp; sourceTree = SOURCE_ROOT; };
+		AA1111111111111111111116 /* ribbon_builder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ribbon_builder.cpp; path = ../shared/ribbon_builder.cpp; sourceTree = SOURCE_ROOT; };
+		AA1111111111111111111117 /* ribbon_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ribbon_module.cpp; path = ../shared/ribbon_module.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000A0 /* libplugin_geometry2d.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libplugin_geometry2d.a; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -78,6 +82,8 @@
 				AA1111111111111111111113 /* clipper.engine.cpp */,
 				AA1111111111111111111114 /* clipper.offset.cpp */,
 				AA1111111111111111111115 /* clipper.rectclip.cpp */,
+				AA1111111111111111111116 /* ribbon_builder.cpp */,
+				AA1111111111111111111117 /* ribbon_module.cpp */,
 			);
 			name = shared;
 			sourceTree = "<group>";
@@ -166,6 +172,8 @@
 				AA1111111111111111111103 /* clipper.engine.cpp in Sources */,
 				AA1111111111111111111104 /* clipper.offset.cpp in Sources */,
 				AA1111111111111111111105 /* clipper.rectclip.cpp in Sources */,
+				AA1111111111111111111106 /* ribbon_builder.cpp in Sources */,
+				AA1111111111111111111107 /* ribbon_module.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

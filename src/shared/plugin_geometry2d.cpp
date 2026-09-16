@@ -61,5 +61,9 @@ CORONA_EXPORT int luaopen_plugin_geometry2d(lua_State *L)
     RegisterClipper2(L);
     lua_setfield(L, -2, "clipper2");
 
+    lua_newtable(L);
+    RegisterRibbon(L);
+    lua_setfield(L, -2, "ribbon");
+
     return 1;
 }

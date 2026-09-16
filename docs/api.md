@@ -6,7 +6,7 @@ A Solar2D native plugin for geometry computation and antialiased mesh generation
 local Geometry2D = require("plugin.geometry2d")
 ```
 
-Six submodules:
+Seven submodules:
 
 | Module | Purpose |
 |--------|---------|
@@ -16,6 +16,204 @@ Six submodules:
 | `Geometry2D.util` | Composite helpers: complete `display.newMesh`-ready meshes in one call |
 | `Geometry2D.path` | Adaptive Bezier flattening and fill/SDF/stroke mesh generation |
 | `Geometry2D.clipper2` | Clipper2 path boolean, offset, clipping, Minkowski, and path utilities |
+| `Geometry2D.ribbon` | Prototype stateful ribbon trail, reusable native storage and retained mesh views |
+
+## Stateful ribbon prototype
+
+`ribbon` is separate from the stateless `path`/`util` output API. Its borrowed
+buffers have a shorter lifetime than the owning buffers returned by those APIs.
+The standalone project `tests/ribbon_simulator` exercises the prototype; consult
+its README for the current validation status before using this in production.
+
+```lua
+local trail = Geometry2D.ribbon.new{
+    width = 20, aaWidth = 2, minDistance = 5,
+    color = {0.2, 0.7, 1, 1}, alpha = 0.8,
+}
+-- Define the shader in tests/ribbon_simulator/shader.lua before creating a view.
+local view = assert(trail:newView{effect = "generator.geometry2d.ribbonPrototype"})
+parent:insert(view.group)
+-- All coordinates are local to view.group. time, now and maxAge use the same unit.
+trail:addPoint(x, y, now)
+trail:expire(now, 500)
+assert(trail:updateView(view))
+-- Cleanup: the display view and the generator have independent lifecycles.
+display.remove(view.group)
+trail:destroy()
+```
+
+Constructor options (unknown keys raise Lua errors):
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `width` | `28` | Positive full core width, in local coordinate units |
+| `aaWidth` | `2` | Non-negative outward band extent; `0` omits the AA geometry |
+| `minDistance` | `5` | Accept only points farther than this from the last accepted point |
+| `reverseDot` | `-0.9` | Split a join if consecutive normalized directions have a smaller dot product; range `[-1,1]` |
+| `miterLimit` | `2.4` | Maximum outer miter length divided by core half-width; finite and at least `1`; sharper joins are beveled |
+| `mode` | `"indexed"` | `"indexed"` or non-indexed `"triangles"`; fixed for the generator lifetime |
+| `initialPointCapacity` | `min(16,maxPoints)` | Initially allocated queue slots, integer `2..maxPoints` |
+| `maxPoints` | `4096` | Accepted-point limit, integer `2..8191` |
+| `capacityTiers` | `true` | Retain power-of-two vertex/triangle capacity tiers, capped by the indexed vertex limit |
+| `color` | `{1,1,1,1}` | Dense `{r,g,b[,a]}` array; components in `[0,1]` |
+| `alpha` | `1` | Overall alpha in `[0,1]`, multiplied by color alpha |
+| `timestampMode` | `"monotonic"` | Timestamp/expiry policy: `"monotonic"` or opt-in business compatibility `"legacyCount"`; fixed for the generator lifetime |
+
+Methods:
+
+| Call | Result / behavior |
+|------|-------------------|
+| `trail:addPoint(x,y,time)` | `true` when accepted; `false` for a nearby/duplicate point; `nil,message` if a resource/geometry limit is exceeded |
+| `trail:expire(now,maxAge)` | Number removed under `timestampMode` (see below); `maxAge >= 0` |
+| `trail:clear()` | Returns self; empties points and retains allocated queue/work/output capacity |
+| `trail:reservePoints(count)` | Returns self; preallocates queue slots only; `2..maxPoints` |
+| `trail:setWidth(width)` / `trail:setAAWidth(width)` | Returns self; schedules geometry regeneration only when the value changes |
+| `trail:setColor(r,g,b[,a])` / `trail:setAlpha(alpha)` | Returns self; style-only updates do not regenerate or upload geometry |
+| `trail:pointCount()` | Current accepted point count |
+| `trail:snapshot([mode])` | `mode="buffers"` (default) or `"table"`; `nil,message` if fewer than two points or geometry generation fails |
+| `trail:newView([{effect=name}])` | A retained view table, or `nil,message`; empty trails create an empty group |
+| `trail:updateView(view)` | `view,replaced,updated`; `replaced` indicates mesh creation/removal/replacement; unchanged state returns `view,false,false` |
+| `trail:getStats()` | Builds pending geometry and returns counts, revisions, timings and native array capacity bytes; may return `nil,message` |
+| `trail:destroy()` | `true` on first destruction, `false` subsequently; immediately releases native arrays and invalidates borrowed buffers |
+
+Point timestamps must always be finite. Under the default `timestampMode="monotonic"`,
+they must also be non-decreasing relative to the last accepted point; `expire()`
+removes only the expired prefix (`time <= now-maxAge`). Future points cannot be
+removed before their own expiry in this default mode. Rejected nearby points do
+not refresh the last point's timestamp. Coordinates and geometric
+parameters must be finite and representable as float32. Bad types, enums, ranges,
+timestamp order in monotonic mode and unknown options raise Lua errors. Native allocation,
+geometric limits and display construction/update failures return `nil,message`.
+
+For the existing business `addPointsEvenly()` / `trailDisappearing()` behavior,
+opt in when constructing the generator:
+
+```lua
+local trail = Geometry2D.ribbon.new{timestampMode = "legacyCount"}
+trail:addPoint(0, 0, 2000)  -- a future point
+trail:addPoint(20, 0, 1000) -- subsequently append a current/earlier timestamp
+local removed = trail:expire(1500, 500) -- 1: removes the FIRST point (time=2000)
+-- The second point (time=1000) remains until another expire() call.
+```
+
+`legacyCount` preserves timestamps and insertion/path order without clamping or
+sorting. Each `expire()` call scans all current points once, counts those satisfying
+`now-time >= maxAge`, then removes exactly that count from the queue front. This
+intentionally reproduces the business rule: a future point can be removed while
+an already-expired point remains. Repeated calls with the same `now` can therefore
+remove more points. It does not delete individual points from the middle or
+reconnect across them. The scan is O(pointCount), with no extra work array;
+default monotonic expiry keeps its existing prefix-only behavior. Buffer
+invalidation, distance fade and view updates follow the actual removed prefix.
+Keep the business draw-before-expire order in the adapter if that timing is
+required; the plugin does not schedule expiry or redraw automatically.
+
+Snapshots contain `vertices`, `uvs`, `pathDistances`,
+`contourDistances`, `mode`, `logicalVertexCount`, `logicalIndexCount`,
+`vertexCapacity`, `indexCapacity`, `logicalTriangleCount`, `triangleCapacity`,
+`tailLength`, `headLength`, `activeLength`,
+`bufferRevision` and `bufferValidity`. Table snapshots are independent copies
+with 1-based `indices` in indexed mode. Buffer snapshots use float32 coordinates/attributes and,
+in indexed mode, zero-based uint16 `indices` with `zeroBasedIndices=true`. Descriptor `count` is
+the vertex count for vertices/UVs/attributes, or the index count for indices;
+the two scalar distance descriptors also set `componentCount=1`.
+
+```lua
+local trail = Geometry2D.ribbon.new{
+    mode = "triangles", miterLimit = 2.4,
+    timestampMode = "legacyCount", -- optional business expiry compatibility
+}
+-- snapshot("table"), snapshot("buffers") and newView/updateView all use this mode.
+```
+
+Triangle-list snapshots and mesh descriptors omit `indices` and
+`zeroBasedIndices`. Logical and capacity vertex counts are multiples of three;
+`logicalIndexCount` and `indexCapacity` are zero, while triangle counts equal the
+corresponding vertex counts divided by three. Indexed output remains limited to
+65535 vertices; triangle-list output is generated directly without an internal
+uint16 index bottleneck and is capped at 3,145,728 vertices. Exceeding either
+limit returns `nil,message`. Capacity-tier padding in triangle mode adds whole
+degenerate triangles at an existing vertex. It duplicates shared vertices and
+can use more storage/upload bandwidth; it does not enable Solar2D batching.
+The point-count safety limit remains independent of output mode.
+
+UV.x contains accumulated path distance; UV.y contains the contour-distance
+coordinate: zero on core vertices and positive on the exterior, up to `aaWidth`,
+interpolated across the outer strip. It is the maximum positive distance to the
+segment cell's silhouette planes. This is an approximate boundary-distance field near
+joins, not an exact signed distance to the union of overlapping geometry. The
+two scalar buffers expose the same independent attributes for custom consumers.
+At ordinary turns the two neighboring segments share an angle-bisector
+partition. Each segment's inner side is clipped to its cell. Outer joins use a
+bounded miter, with a shared bevel plane when `1/cos(turnAngle/2) > miterLimit`.
+This replaces the old propagated offset-line intersections and can change the
+outline, vertex order/count and distance interpolation around turns.
+
+The AA region is the difference between the expanded cell and its core. It is
+decomposed into disjoint convex pieces by the dominant silhouette-distance
+plane, using the same join partitions as the core. Each piece has an affine
+contour-distance field, so triangle interpolation preserves the side/cap AA
+ramp instead of spreading corner distances across an entire strip.
+Consequently adjacent segment cells, core and AA do not intentionally
+cover each other at an ordinary join; clipping does not add an AA seam along
+their internal shared boundary. Path-distance coordinates agree at the shared
+join, and the core width on straight portions remains unchanged.
+
+Flat caps at endpoints and near-reverse splits are retained. Non-adjacent
+self-crossings, tightly folded paths where non-adjacent segments overlap, and
+separate reversal runs may still overlap and alpha-blend. This is local join
+partitioning, not a global union of the trail or AA region.
+
+The shader computes `clamp((pathDistance-tailLength)/(headLength-tailLength),0,1)`
+independently from outward AA coverage based on `fwidth(contourDistance)`.
+It multiplies both by the mesh tint/global alpha. The core is not narrowed.
+`aaWidth` must cover the desired pixel footprint at the current transform;
+too narrow a band can clip the AA transition at small scales. UVs are occupied
+by distance data, so ordinary image texture mapping is not supported by this
+prototype shader. No vertex extension or deferred extended-attribute write is
+needed: UVs are supplied in the mesh constructor, and the effect/tint are assigned
+before `newView()` returns. A view without `effect` is a solid geometry diagnostic,
+with neither distance fade nor shader AA.
+
+`view.group` is stable across mesh rebuilds; transform/insert that group.
+`view.mesh` may change when capacity grows, or become nil after clear/expiry.
+The view owns mesh offset compensation, unlike stateless `output="mesh"`.
+Its `mode` and logical/capacity triangle counts are also reported; mode cannot
+be changed through an existing view.
+Do not modify the child mesh geometry or underscore-prefixed view bookkeeping.
+Updating a view from a different generator is an error. Reentrant access to the
+generator during its display callbacks is rejected, protecting borrowed arrays.
+After destroying the generator, existing display meshes retain their last
+uploaded state but cannot be updated through it; remove their groups separately.
+Views retain the generator until released, unless `destroy()` is called explicitly.
+
+Buffers are readable borrowed views of generator-owned arrays. **Consume them
+synchronously before the next successful geometry mutation, clear or destruction.**
+Style changes and no-op operations do not invalidate them. Old buffer acquisition
+raises an expired-buffer error; buffers do not keep the generator alive. Keep a
+reference to the generator, or use `snapshot("table")` for persistent copies.
+Do not cache an acquired native pointer across updates. Clearing retains storage;
+destroying or garbage-collecting the generator releases it even if stale buffer
+descriptors remain. This avoids Lua numeric-table conversion and reuses native
+storage; Solar2D still copies/updates its own geometry and GPU resources. It is
+not end-to-end zero-copy, and descriptor tables/userdata still allocate.
+
+Capacity padding repeats an existing vertex and uses degenerate triangles, so it
+does not enlarge the bounds. Submitted triangle counts include padding even
+though its area is zero. `getStats()` reports `logicalTriangleCount`,
+`triangleCapacity`, queue capacity, `nativeCapacityBytes` (vector capacities,
+excluding allocator overhead, descriptors and engine/GPU copies), `buildCount`,
+`noOpBuildCount`, `lastBuildMilliseconds`, `totalBuildMilliseconds`,
+`meshCreateCount` and `meshUpdateCount`, in addition to geometry/style revisions
+and lengths, plus the selected `timestampMode`, `mode` and `miterLimit`.
+Reading stats builds pending geometry; it is not a free per-frame
+instrumentation call. Timings cover native geometry generation, not full rendering.
+
+Distance attributes are currently float32 accumulated lengths; very long-lived
+trails can lose distance precision. Start a fresh trail/clear when appropriate.
+The prototype updates endpoint shader parameters without recomputing alpha
+tables, but adding/removing points still rebuilds and uploads geometry. It does
+not yet implement partial-range uploads or cross-trail batching.
 
 ## Conventions
 
