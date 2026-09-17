@@ -639,8 +639,8 @@ do
     local DISTANCE = 5
 
     local data = Geometry2D.util.meshSDF({
-        { 0,0,  80,0,  80,80,  0,80 },
-        { 20,20,  20,60,  60,60,  60,20 },   -- CCW on screen (hole)
+        { 0,0,  80,0,  80,40,  60,40,  60,80,  0,80 }, -- reflex outer corner
+        { 20,20,  20,60,  40,60,  40,20 },   -- CCW on screen (hole)
     }, { distance = DISTANCE, join = "round" })
 
     -- distance stats: 0 on the boundary and across the body (the AA ramp
@@ -664,7 +664,7 @@ do
     end
 
     local t = display.newText({
-        text = "util.meshSDF", x = ox + 50, y = oy - 10,
+        text = "util.meshSDF / reflex + hole", x = ox + 50, y = oy - 10,
         fontSize = 10,
     })
     t:setFillColor(1, 1, 1)
@@ -872,6 +872,26 @@ do
         fontSize = 10,
     })
     t:setFillColor(1, 1, 1)
+end
+
+-- Small retained ribbon AA gallery; numerical coverage lives in
+-- tests/ribbon_simulator/pixels.lua, including the same side/cap/join cases.
+do
+    graphics.defineEffect({category = "generator", group = "geometry2d", name = "ribbonGallery",
+        fragment = [[
+            P_COLOR vec4 FragmentKernel(P_UV vec2 uv) {
+                P_UV float coverage = clamp(1.0 - max(uv.y, 0.0) / max(fwidth(uv.y), 0.00001), 0.0, 1.0);
+                return CoronaColorScale(vec4(coverage));
+            }
+        ]],
+    })
+    for i, mode in ipairs({"indexed", "triangles"}) do
+        local r = Geometry2D.ribbon.new({mode = mode, width = 5, aaWidth = 4, minDistance = 0, miterLimit = 1.5})
+        r:addPoint(0, 0, 0); r:addPoint(35, 0, 1); r:addPoint(15, 20, 2)
+        local v = assert(r:newView({effect = "generator.geometry2d.ribbonGallery"}))
+        v.group.x, v.group.y = CX + (i - 1.5) * 90, H - 75
+        v.mesh:setFillColor(0.3, 0.8, 1)
+    end
 end
 
 local instructions = display.newText({

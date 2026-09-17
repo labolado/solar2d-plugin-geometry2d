@@ -57,6 +57,25 @@ RunTest("geometry failure result contract", function()
     assert(ok, err)
 end)
 
+RunTest("fill reflex corner has single coverage", function()
+    for _,join in ipairs({"bevel", "round", "miter"}) do
+        local m = assert(Geometry2D.util.meshSDFGroups({{poly={0,0,200,0,200,80,80,80,80,200,0,200},holes={}}},
+            {distance=40,join=join,mode="triangles"}))
+        local count=0
+        for i=1,#m.vertices,6 do
+            local v=m.vertices
+            local ax,ay,bx,by,cx,cy=v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5]
+            local det=(by-cy)*(ax-cx)+(cx-bx)*(ay-cy)
+            if math.abs(det)>1e-7 then
+                local u=((by-cy)*(83-cx)+(cx-bx)*(82-cy))/det
+                local w=((cy-ay)*(83-cx)+(ax-cx)*(82-cy))/det
+                if u>1e-6 and w>1e-6 and 1-u-w>1e-6 then count=count+1 end
+            end
+        end
+        assert(count==1,"reflex corner overdraw")
+    end
+end)
+
 RunTest("packed string and CoronaMemory polygon input", function()
     local packedTriangle = string.char(
         0,0,0,0, 0,0,0,0,
@@ -243,6 +262,147 @@ RunTest("Clipper2 independent sublibrary", function()
     assert(#C.ellipse(0, 0, 10, 5, {steps = 12}) == 24)
     ExpectRaisedMessage("only array entries", C.union,
         {{0,0, 10,0, 0,10, extra = true}})
+end)
+
+RunTest("stateful ribbon buffers and retained view", function()
+    local ribbon = Geometry2D.ribbon.new({
+        width = 20,
+        aaWidth = 2,
+        minDistance = 0,
+        initialPointCapacity = 4,
+        maxPoints = 64,
+        capacityTiers = true,
+        color = {0.2, 0.7, 1, 0.8},
+        alpha = 0.5,
+    })
+    assert(ribbon:addPoint(0, 0, 100))
+    assert(ribbon:addPoint(50, 0, 110))
+    assert(ribbon:addPoint(100, 0, 120))
+    assert(ribbon:pointCount() == 3)
+
+    local tableData = assert(ribbon:snapshot("table"))
+    assert(tableData.mode == "indexed" and tableData.logicalVertexCount > 0)
+    assert(tableData.logicalIndexCount == tableData.logicalTriangleCount * 3)
+    assert(tableData.vertexCapacity >= tableData.logicalVertexCount)
+    assert(tableData.indexCapacity >= tableData.logicalIndexCount)
+    assert(#tableData.pathDistances == tableData.vertexCapacity)
+    assert(#tableData.contourDistances == tableData.vertexCapacity)
+    assert(math.abs(tableData.headLength - 100) < 0.001)
+    for i = tableData.logicalIndexCount + 1, tableData.indexCapacity do
+        assert(tableData.indices[i] == 1, "ribbon padding index is not degenerate")
+    end
+
+    local buffers = assert(ribbon:snapshot())
+    assert(buffers.vertices.buffer and buffers.uvs.buffer and buffers.indices.buffer)
+    assert(buffers.pathDistances.buffer and buffers.contourDistances.buffer)
+    assert(buffers.vertices.count == buffers.vertexCapacity)
+    assert(buffers.uvs.count == buffers.vertexCapacity)
+    assert(buffers.indices.count == buffers.indexCapacity)
+    assert(buffers.pathDistances.componentCount == 1)
+    assert(buffers.contourDistances.componentCount == 1)
+    assert(buffers.zeroBasedIndices)
+
+    local view = assert(ribbon:newView())
+    assert(view.group and view.mesh)
+    local mesh = view.mesh
+    assert(ribbon:addPoint(150, 20, 130))
+    local updated, replaced, changed = ribbon:updateView(view)
+    assert(updated == view and changed)
+    if not replaced then assert(view.mesh == mesh) end
+
+    local beforeStyle = ribbon:getStats()
+    ribbon:setColor(1, 0.25, 0.1, 0.75):setAlpha(0.4)
+    updated, replaced, changed = ribbon:updateView(view)
+    assert(updated == view and changed and not replaced)
+    assert(ribbon:getStats().buildCount == beforeStyle.buildCount,
+        "style-only ribbon update rebuilt geometry")
+    updated, replaced, changed = ribbon:updateView(view)
+    assert(updated == view and not changed and not replaced,
+        "stationary ribbon performed a redundant view update")
+
+    local future = Geometry2D.ribbon.new({minDistance = 0})
+    future:addPoint(0, 0, 1000)
+    future:addPoint(20, 0, 2000)
+    assert(future:expire(1500, 600) == 0, "future timestamp expired early")
+    assert(future:pointCount() == 2)
+
+    local oldPointCapacity = ribbon:getStats().pointCapacity
+    ribbon:clear()
+    updated, replaced, changed = ribbon:updateView(view)
+    assert(updated == view and changed and view.mesh == nil)
+    assert(ribbon:addPoint(0, 0, 200))
+    assert(ribbon:addPoint(80, 0, 210))
+    assert(ribbon:addPoint(8, 1, 220))
+    local reversal = assert(ribbon:snapshot("table"))
+    assert(reversal.logicalVertexCount >= 16)
+    -- Vertex ordering is private; each emitted triangle must stay on one run.
+    for i = 1, reversal.logicalIndexCount, 3 do
+        local a = reversal.pathDistances[reversal.indices[i]]
+        local b = reversal.pathDistances[reversal.indices[i + 1]]
+        local c = reversal.pathDistances[reversal.indices[i + 2]]
+        assert(math.max(a, b, c) <= 80.001 or math.min(a, b, c) >= 79.999,
+            "near-reverse ribbon connected triangles across the split")
+    end
+    assert(ribbon:getStats().pointCapacity == oldPointCapacity,
+        "clear discarded reusable point storage")
+    view.group:removeSelf()
+
+    ExpectRaisedMessage("Unknown ribbon.new option", Geometry2D.ribbon.new,
+        {fringe = 1})
+    ExpectRaisedMessage("non-decreasing", function() ribbon:addPoint(100, 0, 100) end)
+    assert(ribbon:destroy() and not ribbon:destroy())
+    ExpectRaisedMessage("destroyed", function() ribbon:snapshot() end)
+    future:destroy()
+end)
+
+RunTest("ribbon triangle-list parity", function()
+    -- AA interpolation regression, independent of triangle/vertex ordering.
+    for _, mode in ipairs({"indexed", "triangles"}) do
+        local r = Geometry2D.ribbon.new({mode = mode, width = 16, aaWidth = 4, minDistance = 0})
+        r:addPoint(-80, 0, 0); r:addPoint(80, 0, 1)
+        local d = assert(r:snapshot("table"))
+        for i = 1, d.logicalTriangleCount do
+            local x, y, distance = 0, 0, 0
+            for k = 1, 3 do
+                local id = (i - 1) * 3 + k
+                id = d.indices and d.indices[id] or id
+                x = x + d.vertices[2 * id - 1] / 3
+                y = y + d.vertices[2 * id] / 3
+                distance = distance + d.contourDistances[id] / 3
+            end
+            assert(math.abs(distance - math.max(0, math.abs(x) - 80, math.abs(y) - 8)) < 0.001,
+                "AA distance interpolation crossed a silhouette-plane boundary")
+        end
+        r:destroy()
+    end
+    local indexed = Geometry2D.ribbon.new({minDistance = 0, miterLimit = 1.5})
+    local triangles = Geometry2D.ribbon.new({mode = "triangles", minDistance = 0, miterLimit = 1.5})
+    for _, p in ipairs({{0, 0}, {80, 0}, {30, 40}, {100, 100}}) do
+        assert(indexed:addPoint(p[1], p[2], 0))
+        assert(triangles:addPoint(p[1], p[2], 0))
+    end
+    local a, b = assert(indexed:snapshot("table")), assert(triangles:snapshot("table"))
+    assert(b.mode == "triangles" and b.indices == nil and b.zeroBasedIndices == nil)
+    assert(b.logicalIndexCount == 0 and b.indexCapacity == 0)
+    assert(b.logicalVertexCount == a.logicalIndexCount and b.vertexCapacity % 3 == 0)
+    for i = 1, b.logicalVertexCount do
+        local j = a.indices[i]
+        assert(b.vertices[2*i-1] == a.vertices[2*j-1] and b.vertices[2*i] == a.vertices[2*j])
+        assert(b.pathDistances[i] == a.pathDistances[j])
+        assert(b.contourDistances[i] == a.contourDistances[j])
+    end
+    for i = b.logicalVertexCount + 1, b.vertexCapacity do
+        assert(b.vertices[2*i-1] == b.vertices[1] and b.vertices[2*i] == b.vertices[2])
+    end
+    local buffers = assert(triangles:snapshot())
+    assert(buffers.indices == nil and buffers.vertices.count == b.vertexCapacity)
+    local view = assert(triangles:newView())
+    assert(view.mode == "triangles" and view.mesh)
+    triangles:setWidth(12)
+    assert(triangles:updateView(view))
+    view.group:removeSelf()
+    indexed:destroy()
+    triangles:destroy()
 end)
 
 RunTest("dashed stroke output and validation", function()
