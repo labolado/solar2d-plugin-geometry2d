@@ -52,7 +52,11 @@ static float normalize(float *x, float *y)
 static int curveDivs(float r, float arc, float tol)
 {
     float da = acosf(r / (r + tol)) * 2.0f;
-    return maxi(2, (int)ceilf(arc / da));
+    double divisions = std::ceil(static_cast<double>(arc) / da);
+    // Reject loss of angular precision and excessive subdivisions BEFORE the
+    // integer conversion. Never silently substitute a coarser round join.
+    if (!(da > 0) || !std::isfinite(divisions) || divisions > 1000000) return 0;
+    return maxi(2, static_cast<int>(divisions));
 }
 
 // Signed polygon area (standard shoelace). In Solar2D display coordinates
@@ -496,14 +500,17 @@ static void EmitStrokeStrip(std::vector<Point> &pts, bool closed,
 // interpolation reproduces the exact AA ramp: solid core of `width`, linear
 // fade over `fringe` pixels on each side.
 // ===========================================================================
-void ExpandStroke(const std::vector<std::vector<std::pair<float, float>>> &polylines,
+bool ExpandStroke(const std::vector<std::vector<std::pair<float, float>>> &polylines,
                   bool closed, float width, float fringe,
                   LineCap lineCap, LineJoin lineJoin, float miterLimit, float tessTol,
-                  std::vector<Vertex> &out)
+                  std::vector<Vertex> &out, size_t maxVertices)
 {
     float halfW = width * 0.5f;
     float w = halfW + fringe;                    // outer skirt half-width
-    int ncap = curveDivs(halfW, PI, tessTol);    // divisions per half circle (pre-aa, like NanoVG)
+    const bool round = lineJoin == JOIN_ROUND || (!closed && lineCap == CAP_ROUND);
+    int ncap = round ? curveDivs(halfW, PI, tessTol) : 2;
+    if (!std::isfinite(w) || (round && (ncap == 0 || static_cast<size_t>(ncap) > maxVertices / 6)))
+        return false;
 
     for (auto &ring : polylines) {
         std::vector<Point> pts;
@@ -524,6 +531,7 @@ void ExpandStroke(const std::vector<std::vector<std::pair<float, float>>> &polyl
             std::vector<Vertex> strip;
             EmitStrokeStrip(pts, closed, halfW, 0.5f, 0.5f, 1.0f, lineCap, lineJoin, ncap, 0.0f, strip);
             StripToTriangles(strip, out);
+            if (out.size() > maxVertices) return false;
             continue;
         }
 
@@ -556,19 +564,23 @@ void ExpandStroke(const std::vector<std::vector<std::pair<float, float>>> &polyl
             pushQuad(aOut0, aOut1, aIn1, aIn0);   // fringe band A (alpha 0 → 1)
             pushQuad(aIn0, aIn1, bIn1, bIn0);     // core band (alpha 1)
             pushQuad(bIn0, bIn1, bOut1, bOut0);   // fringe band B (alpha 1 → 0)
+            if (out.size() > maxVertices) return false;
         }
     }
+    return true;
 }
 
 // ===========================================================================
 // Fill fringe — one-sided outward skirt (stencil-free adaptation of
 // nvg__expandFill's fringe strip)
 // ===========================================================================
-void ExpandFill(const std::vector<FillRing> &rings,
+bool ExpandFill(const std::vector<FillRing> &rings,
                 float fringe, LineJoin join, float miterLimit, float tessTol,
                 std::vector<Vertex> &out)
 {
-    if (fringe <= 0.0f) return;
+    if (fringe <= 0.0f) return true;
+    const int ncap = join == JOIN_ROUND ? curveDivs(fringe, PI, tessTol) : 2;
+    if (ncap == 0) return false;
 
     for (auto &ring : rings) {
         std::vector<Point> pts;
@@ -714,7 +726,6 @@ void ExpandFill(const std::vector<FillRing> &rings,
                 float da = a1 - a0;
                 while (da > PI) da -= PI * 2;
                 while (da < -PI) da += PI * 2;
-                int ncap = curveDivs(fringe, PI, tessTol);
                 int segs = maxi(2, (int)ceilf(fabsf(da) / PI * ncap));
                 for (int k = 0; k < segs; ++k) {
                     float t0 = k / (float)segs, t1 = (k + 1) / (float)segs;
@@ -742,6 +753,7 @@ void ExpandFill(const std::vector<FillRing> &rings,
             }
         }
     }
+    return true;
 }
 
 } // namespace Fringe

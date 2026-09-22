@@ -12,6 +12,15 @@ struct MeshResult {
     std::vector<float> vertices;
     std::vector<uint16_t> indices;
     std::vector<float> values;
+    std::vector<float> uvs;
+    bool sdfResult = false; // Distance output only.
+    bool fillResult = false;
+    bool normalizeFill = false;
+    bool earcutBackend = false;
+    float fringeWidth = 0;
+    SDFOptions sdfOptions;
+    SDFStats sdfStats;
+    std::array<double, 4> uvBounds{};
     const char *valueName = nullptr;
     bool triangles = false;
 

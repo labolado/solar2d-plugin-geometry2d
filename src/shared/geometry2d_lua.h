@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fringe.h"
+#include "sdf_builder.h"
 #include "polypartition.h"
 
 #include "CoronaLua.h"
@@ -42,8 +43,7 @@ enum MeshOption : uint32_t {
     OptionRefine        = 1u << 6,
     OptionMode          = 1u << 7,
     OptionOutput        = 1u << 8,
-    OptionDistance      = 1u << 9,
-    OptionDistanceSign  = 1u << 10,
+    OptionSDF          = 1u << 9,
     OptionMaxCurvePoints = 1u << 11,
     OptionLegacyUVs     = 1u << 12,
     OptionDashPattern   = 1u << 13,
@@ -52,6 +52,9 @@ enum MeshOption : uint32_t {
     OptionFillRule       = 1u << 16,
     OptionIntersections  = 1u << 17,
     OptionClipperPrecision = 1u << 18,
+    OptionAA = 1u << 19,
+    OptionTopology = 1u << 20,
+    OptionLimits = 1u << 21,
 };
 
 struct MeshOptions {
@@ -63,9 +66,11 @@ struct MeshOptions {
     bool closed = false;
     bool refine = false;
     bool triangles = false;
-    bool outsidePositive = false;
     bool legacyUVs = false;
-    float distance = 5.0f;
+    bool earcutBackend = false; // Local approximate distance method (internal).
+    bool vertexAA = true;
+    bool normalizeFill = false;
+    SDFOptions sdf;
     size_t maxCurvePoints = 262144;
     std::vector<float> dashPattern;
     float dashOffset = 0.0f;
@@ -77,6 +82,7 @@ struct MeshOptions {
 };
 
 bool IsFlatPolygonTable(lua_State *L, int arg);
+size_t ValidateDenseArray(lua_State *L, int arg, const char *context);
 bool ReadPolygon(lua_State *L, int arg, TPPLPoly &poly, bool isHole = false);
 bool ReadPolygonList(lua_State *L, int arg, TPPLPolyList &list);
 void PushPolygonList(lua_State *L, TPPLPolyList &list);

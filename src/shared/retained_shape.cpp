@@ -17,7 +17,7 @@ namespace {
 
 static const char *kShapeMetatable = "plugin.geometry2d.retainedShape";
 
-static constexpr uint32_t kConfigureOptions = OptionFringe | OptionMiterLimit |
+static constexpr uint32_t kConfigureOptions = OptionAA | OptionMiterLimit |
     OptionTessTol | OptionRefine | OptionMode | OptionMaxCurvePoints |
     OptionMaxDashSegments | OptionFillRule | OptionIntersections |
     OptionClipperPrecision;
@@ -393,7 +393,8 @@ static int Configure(lua_State *L)
     defaults.maxDashSegments = shape->strokeOptions.maxDashSegments;
     MeshOptions options = GetMeshOptions(L, 2, kConfigureOptions,
                                          "retainedShape.configure", &defaults);
-    bool changed = shape->fillOptions.fringe != options.fringe ||
+    bool changed = shape->fillOptions.vertexAA != options.vertexAA ||
+        shape->fillOptions.fringe != options.fringe ||
         shape->fillOptions.miterLimit != options.miterLimit ||
         shape->fillOptions.tessTol != options.tessTol ||
         shape->fillOptions.maxCurvePoints != options.maxCurvePoints ||
@@ -404,6 +405,7 @@ static int Configure(lua_State *L)
         shape->fillOptions.intersections != options.intersections ||
         shape->fillOptions.clipperPrecision != options.clipperPrecision;
     shape->fillOptions.fringe = shape->strokeOptions.fringe = options.fringe;
+    shape->fillOptions.vertexAA = shape->strokeOptions.vertexAA = options.vertexAA;
     shape->fillOptions.miterLimit = shape->strokeOptions.miterLimit = options.miterLimit;
     shape->fillOptions.tessTol = shape->strokeOptions.tessTol = options.tessTol;
     shape->fillOptions.maxCurvePoints = shape->strokeOptions.maxCurvePoints = options.maxCurvePoints;
@@ -438,7 +440,8 @@ static bool EnsureGeometry(RetainedShape &shape, std::string &error)
     {
         std::vector<Polygon> groups;
         if (!PreparePathFillGroups(contours, shape.fillOptions, groups, error) ||
-            !BuildFillMesh(groups, shape.fillOptions, false, fillMesh, error))
+            !BuildFillMesh(groups, shape.fillOptions, false, fillMesh, error) ||
+            !ApplyPathUVBounds(contours, fillMesh, error))
             return false;
     }
     if (hasStroke)

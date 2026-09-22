@@ -484,7 +484,7 @@ do
     local data = Geometry2D.util.meshFill({
         outer,
         hole,
-    }, { fringe = 3.0, join = "miter", miterLimit = 2.4 })
+    }, { aaWidth = 3.0, join = "miter", miterLimit = 2.4 })
 
     PrintResult("util.meshFill(holey)", #data.indices / 3)
     local mesh = FringeMesh(data, ox, oy, 1, 1, 1)
@@ -587,7 +587,7 @@ do
     local data = Geometry2D.util.meshFill({
         { 52.5,0, 67.5,37.5, 105,37.5, 75,60, 90,97.5, 52.5,75, 15,97.5, 30,60, 0,37.5, 37.5,37.5 },
         { 40,35, 40,60, 65,60, 65,35 },  -- CCW on screen (convention hole)
-    }, { fringe = 1.0, join = "round", refine = false })
+    }, { aaWidth = 1.0, join = "round", refine = false })
 
     PrintResult("util.meshFill(star)", #data.indices / 3)
     local mesh = FringeMesh(data, ox, oy, 0.3, 0.9, 0.4)
@@ -619,7 +619,7 @@ do
         { -- group 3: a pentagon
             { 0,90,  40,90,  50,110,  20,130,  -10,110 },
         },
-    }, { fringe = 5.0, join = "round" })
+    }, { aaWidth = 5.0, join = "round" })
 
     PrintResult("util.meshFillGroups(3)", #data.indices / 3)
     FringeMesh(data, ox, oy, 0.9, 0.6, 0.2)
@@ -632,52 +632,47 @@ do
 end
 
 -- -------------------------------------------------------------------
--- Test 22: util.meshSDF — signed-distance mesh for shader-based AA
+-- Test 22: util.meshDistance — signed-distance mesh for shader-based AA
 -- -------------------------------------------------------------------
 do
     local ox, oy = Pos(2.2, 4)
     local DISTANCE = 5
 
-    local data = Geometry2D.util.meshSDF({
+    local data = Geometry2D.util.meshDistance({
         { 0,0,  80,0,  80,40,  60,40,  60,80,  0,80 }, -- reflex outer corner
         { 20,20,  20,60,  40,60,  40,20 },   -- CCW on screen (hole)
-    }, { distance = DISTANCE, join = "round" })
+    }, {method="partition", innerRange = DISTANCE, outerRange = 2, output = "buffers" })
 
-    -- distance stats: 0 on the boundary and across the body (the AA ramp
-    -- clamps to alpha 1 for d >= 0), down to -distance at the band's outer edge
-    local dMin, dMax = math.huge, -math.huge
-    for i = 1, #data.distances do
-        dMin = math.min(dMin, data.distances[i])
-        dMax = math.max(dMax, data.distances[i])
-    end
-    PrintResult("util.meshSDF", #data.indices / 3)
-    print(("  distances: [%.1f .. %.1f]"):format(dMin, dMax))
-
-    -- Fallback rendering without a shader: linear vertex-alpha fade across
-    -- the band. The shader version replaces this with an exact 1px fwidth()
-    -- smoothstep ramp: alpha = 1 - smoothstep(-fwidth(d), 0, d).
+    PrintResult("util.meshDistance v2", data.stats.triangles)
     local mesh = display.newMesh(data)
     mesh.x, mesh.y = ox, oy
     mesh:translate(mesh.path:getVertexOffset())
-    for i = 1, mesh.fillVertexCount do
-        mesh:setFillVertexColor(i, 0.9, 0.5, 0.9, 1 + data.distances[i] / DISTANCE)
+    local shader = require("sdf_shader")
+    shader.attach(mesh)
+    local frames = 0
+    local function initialize()
+        frames = frames + 1
+        if frames < 2 then return end
+        Runtime:removeEventListener("enterFrame", initialize)
+        shader.write(mesh, data, 3)
     end
+    Runtime:addEventListener("enterFrame", initialize)
 
     local t = display.newText({
-        text = "util.meshSDF / reflex + hole", x = ox + 50, y = oy - 10,
+        text = "util.meshDistance / reflex + hole", x = ox + 50, y = oy - 10,
         fontSize = 10,
     })
     t:setFillColor(1, 1, 1)
 end
 
 -- -------------------------------------------------------------------
--- Test 23: util.meshSDFGroups — several SDF shape groups in ONE mesh
+-- Test 23: util.meshDistanceGroups — several SDF shape groups in ONE mesh
 -- -------------------------------------------------------------------
 do
     local ox, oy = Pos(3, 4)
     local DISTANCE = 5
 
-    local data = Geometry2D.util.meshSDFGroups({
+    local data = Geometry2D.util.meshDistanceGroups({
         { -- group 1: square with a hole
             { 0,0,  80,0,  80,80,  0,80 },
             { 20,20,  20,60,  60,60,  60,20 },   -- CCW on screen (hole)
@@ -688,25 +683,26 @@ do
         { -- group 3: a pentagon
             { 0,90,  40,90,  50,110,  20,130,  -10,110 },
         },
-    }, { distance = DISTANCE, join = "round", mode = "triangles" })
+    }, {method="partition", innerRange = DISTANCE, outerRange = 2, mode = "triangles", output = "buffers" })
 
-    local dMin, dMax = math.huge, -math.huge
-    for i = 1, #data.distances do
-        dMin = math.min(dMin, data.distances[i])
-        dMax = math.max(dMax, data.distances[i])
-    end
-    PrintResult("util.meshSDFGroups(3)", #data.vertices / 6)
-    print(("  distances: [%.1f .. %.1f]"):format(dMin, dMax))
+    PrintResult("util.meshDistanceGroups(3)", data.stats.triangles)
 
     local mesh = display.newMesh(data)
     mesh.x, mesh.y = ox, oy
     mesh:translate(mesh.path:getVertexOffset())
-    for i = 1, mesh.fillVertexCount do
-        mesh:setFillVertexColor(i, 0.4, 0.7, 0.9, 1 + data.distances[i] / DISTANCE)
+    local shader = require("sdf_shader")
+    shader.attach(mesh)
+    local frames = 0
+    local function initialize()
+        frames = frames + 1
+        if frames < 2 then return end
+        Runtime:removeEventListener("enterFrame", initialize)
+        shader.write(mesh, data, 2)
     end
+    Runtime:addEventListener("enterFrame", initialize)
 
     local t = display.newText({
-        text = "util.meshSDFGroups", x = ox + 50, y = oy - 10,
+        text = "util.meshDistanceGroups", x = ox + 50, y = oy - 10,
         fontSize = 10,
     })
     t:setFillColor(1, 1, 1)
@@ -721,7 +717,7 @@ do
     local data = Geometry2D.util.meshFill({
         { 0,0,  80,0,  80,80,  0,80 },
         { 20,20,  20,60,  60,60,  60,20 },
-    }, { fringe = 5.0, mode = "triangles", join = "round" })
+    }, { aaWidth = 5.0, mode = "triangles", join = "round" })
 
     PrintResult("util.meshFill(triangles)", #data.vertices / 6)
     print(("  mode=%s, indices=%s, #vertices=%d"):format(
@@ -747,7 +743,7 @@ do
     }
 
     local solid = Geometry2D.path.meshStroke(path, 8, {
-        fringe = 2,
+        aaWidth = 2,
         cap = "round",
         join = "round",
     })
@@ -755,7 +751,7 @@ do
     FringeMesh(solid, ox, oy, 0.3, 0.9, 1.0)
 
     local dashed = Geometry2D.path.meshStroke(path, 2, {
-        fringe = 1,
+        aaWidth = 1,
         cap = "round",
         join = "round",
         dashPattern = {12, 12},
@@ -783,7 +779,7 @@ do
     local resolved, err = Geometry2D.path.meshFill(bowTie, {
         intersections = "resolve",
         fillRule = "evenOdd",
-        fringe = 2,
+        aaWidth = 2,
         join = "round",
     })
     assert(resolved, err)
@@ -820,7 +816,7 @@ do
     }
 
     local dashed = Geometry2D.path.meshStroke(starPath, 1, {
-        fringe = 1,
+        aaWidth = 1,
         cap = "butt",
         join = "miter",
         dashPattern = {10, 10},
@@ -891,6 +887,32 @@ do
         local v = assert(r:newView({effect = "generator.geometry2d.ribbonGallery"}))
         v.group.x, v.group.y = CX + (i - 1.5) * 90, H - 75
         v.mesh:setFillColor(0.3, 0.8, 1)
+    end
+end
+
+-- Compare capability levels using the same original outline and material UVs.
+do
+    local shader=require('sdf_shader')
+    for i,label in ipairs{'fill','vertex AA','distance outer','partition','local'} do
+        local distance=i>=3
+        local options=distance and {innerRange=i==3 and 0 or 8,method=i==5 and 'local' or 'partition',output='mesh'}
+            or {aa=i==1 and 'none' or 'vertex',output='mesh'}
+        local m,a=(distance and Geometry2D.util.meshDistance or Geometry2D.util.meshFill)(
+            {-22,-22,22,-22,22,0,0,0,0,22,-22,22},options)
+        assert(m,a);m.x=CX+(i-3.5)*90;m.y=H-155
+        if not distance then m:setFillColor(.2,.6,1,.5)
+        else
+            shader.attach(m)
+            local frames=0
+            local function ready()
+                frames=frames+1
+                if frames<2 then return end
+                Runtime:removeEventListener('enterFrame',ready)
+                shader.write(m,a,i==3 and 0 or 3)
+            end
+            Runtime:addEventListener('enterFrame',ready)
+        end
+        display.newText{text=label,x=m.x,y=H-120,fontSize=10}
     end
 end
 

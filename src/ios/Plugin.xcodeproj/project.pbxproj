@@ -14,6 +14,8 @@
 		AA00000000000000000000B6 /* corona_buffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* corona_buffer.cpp */; };
 		AA00000000000000000000B7 /* mesh_result.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* mesh_result.cpp */; };
 		AA00000000000000000000B8 /* mesh_builder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A8 /* mesh_builder.cpp */; };
+		AA00000000000000000000BE /* sdf_builder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000E1 /* sdf_builder.cpp */; };
+		AA00000000000000000000BF /* earcut_stroke_builder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000F1 /* earcut_stroke_builder.cpp */; };
 		AA00000000000000000000B9 /* polypartition_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A9 /* polypartition_module.cpp */; };
 		AA00000000000000000000BA /* earcut_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000AA /* earcut_module.cpp */; };
 		AA00000000000000000000BB /* mesh_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000AB /* mesh_module.cpp */; };
@@ -36,6 +38,8 @@
 		AA00000000000000000000A6 /* corona_buffer.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = corona_buffer.cpp; path = ../shared/corona_buffer.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000A7 /* mesh_result.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = mesh_result.cpp; path = ../shared/mesh_result.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000A8 /* mesh_builder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = mesh_builder.cpp; path = ../shared/mesh_builder.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000000000000000000E1 /* sdf_builder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = sdf_builder.cpp; path = ../shared/sdf_builder.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000000000000000000F1 /* earcut_stroke_builder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = earcut_stroke_builder.cpp; path = ../shared/earcut_stroke_builder.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000A9 /* polypartition_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = polypartition_module.cpp; path = ../shared/polypartition_module.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000AA /* earcut_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = earcut_module.cpp; path = ../shared/earcut_module.cpp; sourceTree = SOURCE_ROOT; };
 		AA00000000000000000000AB /* mesh_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = mesh_module.cpp; path = ../shared/mesh_module.cpp; sourceTree = SOURCE_ROOT; };
@@ -72,6 +76,8 @@
 				AA00000000000000000000A6 /* corona_buffer.cpp */,
 				AA00000000000000000000A7 /* mesh_result.cpp */,
 				AA00000000000000000000A8 /* mesh_builder.cpp */,
+				AA00000000000000000000E1 /* sdf_builder.cpp */,
+				AA00000000000000000000F1 /* earcut_stroke_builder.cpp */,
 				AA00000000000000000000A9 /* polypartition_module.cpp */,
 				AA00000000000000000000AA /* earcut_module.cpp */,
 				AA00000000000000000000AB /* mesh_module.cpp */,
@@ -162,6 +168,8 @@
 				AA00000000000000000000B6 /* corona_buffer.cpp in Sources */,
 				AA00000000000000000000B7 /* mesh_result.cpp in Sources */,
 				AA00000000000000000000B8 /* mesh_builder.cpp in Sources */,
+				AA00000000000000000000BE /* sdf_builder.cpp in Sources */,
+				AA00000000000000000000BF /* earcut_stroke_builder.cpp in Sources */,
 				AA00000000000000000000B9 /* polypartition_module.cpp in Sources */,
 				AA00000000000000000000BA /* earcut_module.cpp in Sources */,
 				AA00000000000000000000BB /* mesh_module.cpp in Sources */,

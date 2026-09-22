@@ -12,11 +12,9 @@ namespace Geometry2D {
 static constexpr uint32_t kFringeFillOptions = OptionFringe | OptionJoin |
     OptionMiterLimit | OptionTessTol;
 static constexpr uint32_t kFringeStrokeOptions = kFringeFillOptions | OptionCap | OptionClosed;
-static constexpr uint32_t kFillMeshOptions = kFringeFillOptions | OptionRefine |
+static constexpr uint32_t kFillMeshOptions = OptionAA | OptionTopology | OptionLimits | OptionJoin | OptionMiterLimit | OptionTessTol | OptionRefine |
     OptionMode | OptionOutput | OptionLegacyUVs;
-static constexpr uint32_t kSDFMeshOptions = OptionDistance | OptionDistanceSign |
-    OptionJoin | OptionMiterLimit | OptionTessTol | OptionRefine | OptionMode |
-    OptionOutput | OptionLegacyUVs;
+static constexpr uint32_t kSDFMeshOptions = OptionSDF | OptionMode | OptionOutput;
 
 static bool IsTaggedRing(lua_State *L, int arg)
 {
@@ -92,8 +90,9 @@ static int FringeFill(lua_State *L)
     if (!ReadFringeRings(L, 1, rings)) return luaL_argerror(L, 1, "Expected polygon or polygon list");
     MeshOptions options = GetMeshOptions(L, 2, kFringeFillOptions, "fringe.fill");
     std::vector<Fringe::Vertex> triangles;
-    Fringe::ExpandFill(rings, options.fringe, options.join, options.miterLimit,
-                       options.tessTol, triangles);
+    if (!Fringe::ExpandFill(rings, options.fringe, options.join, options.miterLimit,
+                       options.tessTol, triangles))
+        return PushGeometryFailure(L, "fringe.fill subdivision precision exceeded; increase tessTol");
     if (triangles.empty())
         return PushGeometryFailure(L, "fringe.fill produced no geometry");
     if (triangles.size() > 65535)
@@ -115,8 +114,9 @@ static int FringeStroke(lua_State *L)
     std::vector<std::vector<std::pair<float, float>>> rings(fillRings.size());
     for (size_t i = 0; i < fillRings.size(); ++i) rings[i] = std::move(fillRings[i].points);
     std::vector<Fringe::Vertex> triangles;
-    Fringe::ExpandStroke(rings, options.closed, width, options.fringe, options.cap,
-                         options.join, options.miterLimit, options.tessTol, triangles);
+    if (!Fringe::ExpandStroke(rings, options.closed, width, options.fringe, options.cap,
+                         options.join, options.miterLimit, options.tessTol, triangles, 65535))
+        return PushGeometryFailure(L, "fringe.stroke subdivision precision or vertex limit exceeded");
     if (triangles.empty())
         return PushGeometryFailure(L, "fringe.stroke produced no geometry");
     if (triangles.size() > 65535)
@@ -127,6 +127,7 @@ static int FringeStroke(lua_State *L)
 static bool ReadGroups(lua_State *L, int arg, bool groupsInput,
                        std::vector<Polygon> &groups, std::string &error)
 {
+    if (!lua_istable(L, arg)) luaL_argerror(L, arg, "Expected polygon or polygon groups table");
     if (!groupsInput)
     {
         Polygon polygon;
@@ -136,10 +137,11 @@ static bool ReadGroups(lua_State *L, int arg, bool groupsInput,
     }
     if (!lua_istable(L, arg)) { error = "Expected array of polygon groups"; return false; }
     arg = CoronaLuaNormalize(L, arg);
-    size_t count = lua_objlen(L, arg);
+    size_t count = ValidateDenseArray(L, arg, "polygon groups");
     for (size_t i = 1; i <= count; ++i)
     {
         lua_rawgeti(L, arg, static_cast<int>(i));
+        if (!lua_istable(L, -1)) luaL_error(L, "Each polygon group must be a table");
         Polygon polygon;
         bool ok = ReadEarcutPolygon(L, -1, polygon);
         lua_pop(L, 1);
@@ -151,13 +153,16 @@ static bool ReadGroups(lua_State *L, int arg, bool groupsInput,
 
 static int UtilMesh(lua_State *L, bool groupsInput, bool sdf)
 {
-    const char *context = sdf ? (groupsInput ? "meshSDFGroups" : "meshSDF") :
+    const char *context = sdf ? (groupsInput ? "meshDistanceGroups" : "meshDistance") :
                                 (groupsInput ? "meshFillGroups" : "meshFill");
     MeshOptions options = GetMeshOptions(L, 2, sdf ? kSDFMeshOptions : kFillMeshOptions,
                                          context);
     std::vector<Polygon> groups;
     std::string error;
-    if (!ReadGroups(L, 1, groupsInput, groups, error)) return luaL_argerror(L, 1, error.c_str());
+    if (!ReadGroups(L, 1, groupsInput, groups, error))
+    {
+        return PushGeometryFailure(L, error.empty() ? "No polygon groups" : error.c_str());
+    }
     MeshResult result;
     if (!BuildFillMesh(groups, options, sdf, result, error))
         return PushGeometryFailure(L, error.c_str());
@@ -166,8 +171,8 @@ static int UtilMesh(lua_State *L, bool groupsInput, bool sdf)
 
 static int UtilMeshFill(lua_State *L) { return UtilMesh(L, false, false); }
 static int UtilMeshFillGroups(lua_State *L) { return UtilMesh(L, true, false); }
-static int UtilMeshSDF(lua_State *L) { return UtilMesh(L, false, true); }
-static int UtilMeshSDFGroups(lua_State *L) { return UtilMesh(L, true, true); }
+static int UtilMeshDistance(lua_State *L) { return UtilMesh(L, false, true); }
+static int UtilMeshDistanceGroups(lua_State *L) { return UtilMesh(L, true, true); }
 
 void RegisterFringe(lua_State *L)
 {
@@ -182,8 +187,8 @@ void RegisterUtil(lua_State *L)
     luaL_Reg functions[] = {
         {"meshFill", UtilMeshFill},
         {"meshFillGroups", UtilMeshFillGroups},
-        {"meshSDF", UtilMeshSDF},
-        {"meshSDFGroups", UtilMeshSDFGroups},
+        {"meshDistance", UtilMeshDistance},
+        {"meshDistanceGroups", UtilMeshDistanceGroups},
         {nullptr, nullptr}
     };
     luaL_register(L, nullptr, functions);

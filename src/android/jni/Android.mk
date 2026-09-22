@@ -41,6 +41,8 @@ LOCAL_SRC_FILES := $(SRC_DIR)/plugin_geometry2d.cpp \
 	$(SRC_DIR)/corona_buffer.cpp \
 	$(SRC_DIR)/mesh_result.cpp \
 	$(SRC_DIR)/mesh_builder.cpp \
+	$(SRC_DIR)/sdf_builder.cpp \
+	$(SRC_DIR)/earcut_stroke_builder.cpp \
 	$(SRC_DIR)/polypartition_module.cpp \
 	$(SRC_DIR)/earcut_module.cpp \
 	$(SRC_DIR)/mesh_module.cpp \

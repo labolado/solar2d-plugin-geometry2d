@@ -27,6 +27,11 @@ struct PathContour {
     bool closed = false;
 };
 
+struct MeshResult;
+// Preserve material coordinates when fill-rule resolution removes contours.
+bool ApplyPathUVBounds(const std::vector<PathContour>& contours,
+                       MeshResult& mesh, std::string& error);
+
 // Reads either a raw command array or {commands={...}}. Contract violations
 // raise a Lua error; false only means the argument was not a table.
 bool ReadPathCommands(lua_State *L, int arg, std::vector<PathCommand> &commands);

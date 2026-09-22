@@ -49,6 +49,7 @@
 
 #include <utility>
 #include <vector>
+#include <cstddef>
 
 namespace Fringe {
 
@@ -88,7 +89,8 @@ struct FillRing {
 //   miterLimit: miter validity threshold (NanoVG default 2.4).
 //   tessTol: tessellation tolerance for round joins (NanoVG default 0.25).
 // Output: flat triangle list (3 vertices per triangle).
-void ExpandFill(const std::vector<FillRing> &rings,
+// False means subdivision cannot be represented safely; discard the output.
+bool ExpandFill(const std::vector<FillRing> &rings,
                 float fringe, LineJoin join, float miterLimit, float tessTol,
                 std::vector<Vertex> &out);
 
@@ -99,9 +101,9 @@ void ExpandFill(const std::vector<FillRing> &rings,
 //   fringe: AA skirt width on each side (>= 0; 0 = solid strip, alpha 1).
 //   cap: end-cap style for open polylines.
 // Output: flat triangle list (3 vertices per triangle).
-void ExpandStroke(const std::vector<std::vector<std::pair<float, float>>> &polylines,
+bool ExpandStroke(const std::vector<std::vector<std::pair<float, float>>> &polylines,
                   bool closed, float width, float fringe,
                   LineCap cap, LineJoin join, float miterLimit, float tessTol,
-                  std::vector<Vertex> &out);
+                  std::vector<Vertex> &out, std::size_t maxVertices = 1000000);
 
 } // namespace Fringe

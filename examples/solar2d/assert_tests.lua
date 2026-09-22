@@ -35,7 +35,7 @@ RunTest("geometry failure result contract", function()
     ExpectGeometryFailure("earcut", Geometry2D.earcut.triangulate,
         {0,0, 10,0, 20,0})
     ExpectGeometryFailure("fringe", Geometry2D.fringe.fill,
-        {0,0, 10,0, 0,10}, {fringe = 0})
+        {0,0, 10,0, 0,10}, {fringe=0})
     ExpectGeometryFailure("util", Geometry2D.util.meshFill,
         {0,0, 10,0, 20,0})
     ExpectGeometryFailure("path fill", Geometry2D.path.meshFill, {
@@ -55,12 +55,52 @@ RunTest("geometry failure result contract", function()
         Geometry2D.util.meshFill, {0,0, 10,0, 0,10}, {output = "mesh"})
     display.newMesh = originalNewMesh
     assert(ok, err)
+    display.newMesh = function() return nil end
+    ok, err = pcall(ExpectGeometryFailure, "direct SDF mesh returning nil",
+        Geometry2D.util.meshDistance, {0,0,100,0,0,100}, {output="mesh"})
+    display.newMesh = originalNewMesh
+    assert(ok, err)
+end)
+
+RunTest("purpose-based mesh API", function()
+    require('mesh_api_tests')(Geometry2D)
+end)
+
+RunTest("earcut approximate inner stroke", function()
+    local poly={0,0,120,0,120,120,0,120}
+    for _,mode in ipairs{'indexed','triangles'} do
+        for _,output in ipairs{'table','buffers','mesh'} do
+            local m,a=Geometry2D.util.meshDistance(poly,{method="local",mode=mode,output=output,innerRange=8,outerRange=2})
+            assert(m,a)
+            local data=output=='mesh' and a or m
+            assert(data.approximate==true and data.method=='local' and data.kind=='distance')
+            assert(data.alphas==nil and data.fillVertexColors==nil and data.aaWidth ==nil)
+            assert(data.innerRange==8 and data.outerRange==2 and data.stats.work>0)
+            if output=='table' then
+                assert(#data.distances*2==#data.vertices)
+                for _,d in ipairs(data.distances) do assert(d==-8 or d==0 or d==2) end
+                assert(#data.vertices==(mode=='indexed' and 24 or 108))
+            else
+                assert(data.distances.buffer and data.distances.componentCount==1)
+                assert(data.distances.count==(output=='mesh' and a.vertexCount or m.vertices.count))
+            end
+            if output=='mesh' then display.remove(m) end
+        end
+    end
+    for _,field in ipairs{'join','fringe','distanceTransform','distanceTolerance','tessTol'} do
+        ExpectRaisedMessage('',Geometry2D.util.meshDistance,poly,{method="local",[field]=field=='join' and 'round' or 1})
+    end
+    ExpectGeometryFailure('local core collapse',Geometry2D.util.meshDistance,poly,{method="local",innerRange=70})
+    ExpectGeometryFailure('local miter cap',Geometry2D.util.meshDistance,poly,{method="local",miterLimit=1})
+    ExpectGeometryFailure('local work cap',Geometry2D.util.meshDistance,poly,{method="local",maxWork=1})
+    local p=assert(Geometry2D.path.meshDistance({{'M',0,0},{'L',120,0},{'L',120,120},{'L',0,120},{'Z'}},{method="local",tessTol=.2}))
+    assert(p.approximate and p.distances)
 end)
 
 RunTest("fill reflex corner has single coverage", function()
-    for _,join in ipairs({"bevel", "round", "miter"}) do
-        local m = assert(Geometry2D.util.meshSDFGroups({{poly={0,0,200,0,200,80,80,80,80,200,0,200},holes={}}},
-            {distance=40,join=join,mode="triangles"}))
+    for _,range in ipairs({10, 40}) do
+        local m = assert(Geometry2D.util.meshDistanceGroups({{poly={0,0,200,0,200,80,80,80,80,200,0,200},holes={}}},
+            {method="partition",innerRange=range,outerRange=range,mode="triangles"}))
         local count=0
         for i=1,#m.vertices,6 do
             local v=m.vertices
@@ -89,7 +129,7 @@ RunTest("packed string and CoronaMemory polygon input", function()
     assert(#packedResult == 1)
 
     local triangleBuffers = Geometry2D.util.meshFill(
-        {0,0, 10,0, 0,10}, {fringe = 0, output = "buffers"})
+        {0,0, 10,0, 0,10}, {aa="none", output = "buffers"})
     local memoryResult = Geometry2D.earcut.triangulate({
         bytes = triangleBuffers.vertices.buffer,
         type = "float32",
@@ -125,45 +165,38 @@ RunTest("Bezier table, buffer, and direct-mesh output", function()
     assert(#holeFill.indices > 0)
     assert(#holeFill.alphas == #holeFill.vertices / 2)
 
-    local tableData = Geometry2D.path.meshSDF(bezier, {
-        distance = 5,
-        distanceSign = "outsidePositive",
+    local tableData = Geometry2D.path.meshDistance(bezier, {method="partition",
+        innerRange = 5,
         mode = "triangles",
     })
     assert(tableData.indices == nil and #tableData.vertices % 6 == 0)
     for i = 1, #tableData.distances do
-        assert(tableData.distances[i] >= 0)
+        assert(tableData.distances[i] >= -5 and tableData.distances[i] <= 2)
     end
 
-    local bufferData = Geometry2D.path.meshSDF(bezier, {
-        distance = 5,
+    local bufferData = Geometry2D.path.meshDistance(bezier, {method="partition",
+        innerRange = 5,
         output = "buffers",
-        distanceSign = "outsidePositive",
     })
     assert(bufferData.vertices.buffer and bufferData.distances.buffer)
-    assert(bufferData.uvs == nil)
+    assert(bufferData.uvs.count == bufferData.vertices.count)
     assert(bufferData.vertices.count == bufferData.distances.count)
     local bufferMesh = display.newMesh(bufferData)
     assert(bufferMesh.fillVertexCount == bufferData.vertices.count)
     bufferMesh:removeSelf()
 
-    local legacyBufferData = Geometry2D.path.meshSDF(bezier, {
-        output = "buffers",
-        legacyUVs = true,
-    })
-    assert(legacyBufferData.uvs.buffer)
-
     ExpectRaisedMessage("use 'join'",
         Geometry2D.path.meshStroke, bezier, 8, {joint = "round"})
-    ExpectRaisedMessage("requires output",
-        Geometry2D.path.meshSDF, bezier, {legacyUVs = true})
+    ExpectRaisedMessage("does not accept option",
+        Geometry2D.path.meshDistance, bezier, {legacyUVs = true})
+    ExpectRaisedMessage("Unknown", Geometry2D.path.meshDistance, bezier, {distance=5})
+    ExpectRaisedMessage("Unknown", Geometry2D.path.meshDistance, bezier, {distanceSign="outsidePositive"})
     ExpectRaisedMessage("Relative path command",
         Geometry2D.path.flatten, {{"m", 0, 0}})
 
-    local directMesh, attributes = Geometry2D.path.meshSDF(bezier, {
-        distance = 5,
+    local directMesh, attributes = Geometry2D.path.meshDistance(bezier, {method="partition",
+        innerRange = 5,
         output = "mesh",
-        distanceSign = "outsidePositive",
     })
     assert(directMesh.fillVertexCount == attributes.vertexCount)
     assert(attributes.distances.componentCount == 1)
@@ -193,13 +226,13 @@ RunTest("Clipper2 path intersection policy", function()
         {"M", 0, 0}, {"L", 100, 100}, {"L", 0, 100},
         {"L", 100, 0}, {"Z"},
     }
-    local rejected, rejectError = Geometry2D.path.meshFill(bowTie, {fringe = 0})
+    local rejected, rejectError = Geometry2D.path.meshFill(bowTie, {aa="none"})
     assert(rejected == nil)
     assert(type(rejectError) == "string" and
         rejectError:find("intersect", 1, true), rejectError)
 
     local resolved, resolveError = Geometry2D.path.meshFill(bowTie, {
-        fringe = 0,
+        aa="none",
         intersections = "resolve",
         fillRule = "evenOdd",
     })
@@ -209,7 +242,7 @@ RunTest("Clipper2 path intersection policy", function()
     local sameWindingHole, sameWindingError = Geometry2D.path.meshFill({
         {"M", 0, 0}, {"L", 100, 0}, {"L", 100, 100}, {"L", 0, 100}, {"Z"},
         {"M", 25, 25}, {"L", 75, 25}, {"L", 75, 75}, {"L", 25, 75}, {"Z"},
-    }, {fringe = 0, fillRule = "evenOdd"})
+    }, {aa="none", fillRule = "evenOdd"})
     assert(sameWindingHole, sameWindingError)
     assert(#sameWindingHole.indices > 0)
 
@@ -408,14 +441,15 @@ end)
 RunTest("dashed stroke output and validation", function()
     local straightPath = {{"M", 0, 0}, {"L", 100, 0}}
     local solidStroke = Geometry2D.path.meshStroke(straightPath, 8, {
-        fringe = 0, cap = "butt", mode = "triangles",
+        aa="none", cap = "butt", mode = "triangles",
     })
     local dashedStroke = Geometry2D.path.meshStroke(straightPath, 8, {
-        fringe = 0, cap = "butt", mode = "triangles",
+        aa="none", cap = "butt", mode = "triangles",
         dashPattern = {10, 10},
     })
-    assert(#solidStroke.alphas == 18)
-    assert(#dashedStroke.alphas == #solidStroke.alphas * 5)
+    assert(solidStroke.alphas==nil and dashedStroke.alphas==nil)
+    assert(#solidStroke.vertices / 2 == 18)
+    assert(#dashedStroke.vertices == #solidStroke.vertices * 5)
 
     local oddOffsetStroke = Geometry2D.path.meshStroke(bezier, 8, {
         mode = "triangles", cap = "round",
@@ -442,7 +476,7 @@ RunTest("dashed stroke output and validation", function()
         Geometry2D.path.meshStroke, straightPath, 8, {dashPattern = {10, 0}})
 
     print(("Dashed stroke mesh: %d vertices for five butt-cap dashes"):format(
-        #dashedStroke.alphas))
+        #dashedStroke.vertices / 2))
 end)
 
 RunTest("retained Bezier shape and stable view updates", function()
@@ -455,7 +489,7 @@ RunTest("retained Bezier shape and stable view updates", function()
         :strokeFill(1, 0.8, 0.2)
         :strokeJoin("miter")
         :strokeCap("butt")
-        :configure({fringe = 1, mode = "indexed"})
+        :configure({aaWidth = 1, mode = "indexed"})
 
     local view, createError = shape:newView()
     assert(view, createError)
@@ -501,10 +535,9 @@ local function SchedulePackedAttributeTest()
         {name = "geom", type = "float", componentCount = 4},
     })
 
-    local bufferData = Geometry2D.path.meshSDF(bezier, {
-        distance = 5,
+    local bufferData = Geometry2D.path.meshDistance(bezier, {method="partition",
+        innerRange = 5,
         output = "buffers",
-        distanceSign = "outsidePositive",
     })
     local mesh = display.newMesh(bufferData)
     assert(mesh.fillVertexCount == bufferData.vertices.count)
@@ -530,7 +563,7 @@ SchedulePackedAttributeTest()
 local function SchedulePackedVertexColorTest()
     local mesh, attributes = Geometry2D.util.meshFill({
         -40,-40, 40,-40, 0,40,
-    }, {fringe = 0, output = "mesh"})
+    }, {aa="vertex", aaWidth=1, output = "mesh"})
     assert(attributes.fillVertexColors.buffer)
     assert(attributes.fillVertexColors.count == mesh.fillVertexCount)
     mesh.x, mesh.y = display.contentCenterX, display.contentCenterY

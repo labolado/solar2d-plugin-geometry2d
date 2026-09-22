@@ -1,8 +1,11 @@
 #include "mesh_builder.h"
+#include "earcut_stroke_builder.h"
 
 #include "mapbox/earcut.hpp"
+#include "clipper2/clipper.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 
@@ -24,6 +27,10 @@ static bool AppendFillGroup(const Polygon &poly, const MeshOptions &options, flo
     coords.insert(coords.end(), groupCoords.begin(), groupCoords.end());
     for (uint32_t index : groupIndices) indices.push_back(index + base);
 
+    // Pure fill does not construct a duplicate set of fringe rings or call
+    // ExpandFill. Existing meshFill(fringe=0) also benefits from this shortcut.
+    if (bandWidth == 0) return true;
+
     std::vector<Fringe::FillRing> rings;
     rings.reserve(poly.size());
     for (const auto &source : poly)
@@ -37,16 +44,15 @@ static bool AppendFillGroup(const Polygon &poly, const MeshOptions &options, flo
             ring.points.push_back({static_cast<float>(point[0]), static_cast<float>(point[1])});
         rings.push_back(std::move(ring));
     }
-    Fringe::ExpandFill(rings, bandWidth, options.join, options.miterLimit,
-                       options.tessTol, skirt);
-    return true;
+    return Fringe::ExpandFill(rings, bandWidth, options.join, options.miterLimit,
+                              options.tessTol, skirt);
 }
 
 static void AppendVertex(MeshResult &result, float x, float y, float value)
 {
     result.vertices.push_back(x);
     result.vertices.push_back(y);
-    result.values.push_back(value);
+    if (result.valueName) result.values.push_back(value);
 }
 
 using StrokePoint = std::pair<float, float>;
@@ -222,13 +228,59 @@ static bool SplitDashedContour(const StrokeContour &source,
     return true;
 }
 
-bool BuildFillMesh(const std::vector<Polygon> &groups, const MeshOptions &options,
+static bool BuildFillMeshImpl(const std::vector<Polygon> &groups, const MeshOptions &options,
                    bool sdf, MeshResult &result, std::string &error)
 {
+    if (sdf)
+    {
+        SDFMesh mesh;
+        if (options.earcutBackend) {
+            if (!BuildLocalStrokeMesh(groups, options.sdf, options.miterLimit, mesh, error)) return false;
+        } else if (!BuildDistanceMesh(groups, options.sdf, mesh, error)) return false;
+        if (!options.triangles && mesh.vertices.size()/2 > 65535)
+        {
+            error = "indexed SDF mesh exceeds 65535 vertices; use mode='triangles' or split independent regions";
+            return false;
+        }
+        result.triangles = options.triangles;
+        result.valueName = options.sdf.geometry==SDFGeometry::Fill ? nullptr : "distances";
+        result.sdfResult = true;
+        result.earcutBackend = options.earcutBackend;
+        result.sdfOptions = options.sdf;
+        result.sdfStats = mesh.stats;
+        result.uvBounds = mesh.bounds;
+        if (options.triangles)
+        {
+            if (mesh.indices.size() > options.sdf.maxVertices)
+            {
+                error = "SDF triangle-list exceeds maxVertices; prefer indexed mode or split independent regions";
+                return false;
+            }
+            result.vertices.reserve(mesh.indices.size()*2);
+            result.uvs.reserve(mesh.indices.size()*2);
+            if(result.valueName) result.values.reserve(mesh.indices.size());
+            for (auto i : mesh.indices)
+            {
+                result.vertices.push_back(mesh.vertices[2*i]); result.vertices.push_back(mesh.vertices[2*i+1]);
+                if(result.valueName) result.values.push_back(mesh.distances[i]);
+                result.uvs.push_back(mesh.uvs[2*i]); result.uvs.push_back(mesh.uvs[2*i+1]);
+            }
+        }
+        else
+        {
+            result.vertices = std::move(mesh.vertices);
+            result.values = std::move(mesh.distances);
+            result.uvs = std::move(mesh.uvs);
+            result.indices.assign(mesh.indices.begin(), mesh.indices.end());
+        }
+        result.sdfStats.outputBytes = (result.vertices.size()+result.values.size()+result.uvs.size())*sizeof(float)+result.indices.size()*sizeof(uint16_t);
+        return true;
+    }
     std::vector<Point> coords;
     std::vector<uint32_t> bodyIndices;
     std::vector<Fringe::Vertex> skirt;
-    float bandWidth = sdf ? options.distance : options.fringe;
+    const bool plainFill = !options.vertexAA;
+    float bandWidth = plainFill ? 0 : options.fringe;
     for (size_t i = 0; i < groups.size(); ++i)
     {
         if (!AppendFillGroup(groups[i], options, bandWidth, coords, bodyIndices, skirt))
@@ -239,21 +291,29 @@ bool BuildFillMesh(const std::vector<Polygon> &groups, const MeshOptions &option
     }
     if (groups.empty()) { error = "no polygon groups"; return false; }
 
+    if ((options.triangles ? bodyIndices.size()+skirt.size() : coords.size()+skirt.size()) > options.sdf.maxVertices) {
+        error="earcut backend exceeds maxVertices; simplify input or split independent regions";
+        return false;
+    }
+
     result.triangles = options.triangles;
-    result.valueName = sdf ? "distances" : "alphas";
-    float sign = options.outsidePositive ? 1.0f : -1.0f;
+    result.valueName = plainFill ? nullptr : "alphas";
+    auto appendFillVertex = [&](float x, float y, float alpha) {
+        result.vertices.push_back(x);result.vertices.push_back(y);
+        if (!plainFill) result.values.push_back(alpha);
+    };
 
     if (options.triangles)
     {
         result.vertices.reserve((bodyIndices.size() + skirt.size()) * 2);
-        result.values.reserve(bodyIndices.size() + skirt.size());
+        if (!plainFill) result.values.reserve(bodyIndices.size() + skirt.size());
         for (uint32_t index : bodyIndices)
         {
             const Point &p = coords[index];
-            AppendVertex(result, static_cast<float>(p[0]), static_cast<float>(p[1]), sdf ? 0.0f : 1.0f);
+            appendFillVertex(static_cast<float>(p[0]), static_cast<float>(p[1]), 1.0f);
         }
         for (const auto &v : skirt)
-            AppendVertex(result, v.x, v.y, sdf ? sign * options.distance * v.u : v.a);
+            appendFillVertex(v.x, v.y, v.a);
     }
     else
     {
@@ -264,11 +324,11 @@ bool BuildFillMesh(const std::vector<Polygon> &groups, const MeshOptions &option
             return false;
         }
         result.vertices.reserve(total * 2);
-        result.values.reserve(total);
+        if (!plainFill) result.values.reserve(total);
         for (const auto &p : coords)
-            AppendVertex(result, static_cast<float>(p[0]), static_cast<float>(p[1]), sdf ? 0.0f : 1.0f);
+            appendFillVertex(static_cast<float>(p[0]), static_cast<float>(p[1]), 1.0f);
         for (const auto &v : skirt)
-            AppendVertex(result, v.x, v.y, sdf ? sign * options.distance * v.u : v.a);
+            appendFillVertex(v.x, v.y, v.a);
 
         result.indices.reserve(bodyIndices.size() + skirt.size());
         for (uint32_t index : bodyIndices)
@@ -283,6 +343,84 @@ bool BuildFillMesh(const std::vector<Polygon> &groups, const MeshOptions &option
         for (size_t i = 0; i < skirt.size(); ++i)
             result.indices.push_back(static_cast<uint16_t>(coords.size() + i));
     }
+    return true;
+}
+
+bool BuildFillMesh(const std::vector<Polygon>& groups, const MeshOptions& options,
+                   bool distance, MeshResult& result, std::string& error)
+{
+    if (distance) return BuildFillMeshImpl(groups,options,true,result,error);
+    auto start=std::chrono::steady_clock::now();
+    bool first=true;
+    size_t points=0;
+    for(const auto& group:groups) for(const auto& ring:group) for(auto p:ring) {
+        if(++points>options.sdf.maxVertices) {error="fill input exceeds maxVertices";return false;}
+        if(first) {result.uvBounds={p[0],p[1],p[0],p[1]};first=false;}
+        result.uvBounds[0]=std::min(result.uvBounds[0],p[0]);
+        result.uvBounds[1]=std::min(result.uvBounds[1],p[1]);
+        result.uvBounds[2]=std::max(result.uvBounds[2],p[0]);
+        result.uvBounds[3]=std::max(result.uvBounds[3],p[1]);
+    }
+    if(first || result.uvBounds[0]>=result.uvBounds[2] || result.uvBounds[1]>=result.uvBounds[3]) {
+        error="fill requires non-degenerate bounds";return false;
+    }
+    if(options.vertexAA && options.join==Fringe::JOIN_ROUND) {
+        float angle=2*std::acos(options.fringe/(options.fringe+options.tessTol));
+        double divisions=angle>0 ? std::ceil(3.14159265358979323846/angle) : std::numeric_limits<double>::infinity();
+        if(!std::isfinite(divisions) || (std::max(2.0,divisions)+2)*3*points>options.sdf.maxVertices) {
+            error="round-join subdivision exceeds maxVertices; increase tessTol";return false;
+        }
+    }
+    std::vector<Polygon> normalized;
+    if(options.normalizeFill) {
+        using namespace Clipper2Lib;
+        try {
+            PathsD regions;
+            for(const auto& group:groups) {
+                if(group.empty()) {error="empty fill group";return false;}
+                ClipperD clip(6);
+                for(size_t r=0;r<group.size();++r) {
+                    PathD path;
+                    for(auto p:group[r])path.emplace_back(p[0],p[1]);
+                    if(Area(path)<0)std::reverse(path.begin(),path.end());
+                    if(r==0)clip.AddSubject({path});else clip.AddClip({path});
+                }
+                PathsD region;
+                if(!clip.Execute(ClipType::Difference,FillRule::NonZero,region) || clip.ErrorCode()) {
+                    error="fill group normalization failed";return false;
+                }
+                regions.insert(regions.end(),region.begin(),region.end());
+            }
+            ClipperD clip(6);clip.AddSubject(regions);PolyTreeD tree;
+            if(!clip.Execute(ClipType::Union,FillRule::NonZero,tree) || clip.ErrorCode()) {
+                error="fill union failed";return false;
+            }
+            auto ring=[](const PathD& p) {Ring r;for(auto q:p)r.push_back({q.x,q.y});return r;};
+            auto visit=[&](auto&& self,const PolyPathD& node)->void {
+                if(!node.Polygon().empty() && !node.IsHole()) {
+                    Polygon p{ring(node.Polygon())};
+                    for(const auto& child:node)p.push_back(ring(child->Polygon()));
+                    normalized.push_back(std::move(p));
+                }
+                for(const auto& child:node)self(self,*child);
+            };
+            visit(visit,tree);
+        } catch(const std::exception& e) {error=e.what();return false;}
+    }
+    if(!BuildFillMeshImpl(options.normalizeFill?normalized:groups,options,false,result,error))return false;
+    const auto& b=result.uvBounds;
+    for(size_t i=0;i<result.vertices.size();i+=2) {
+        double u=(result.vertices[i]-b[0])/(b[2]-b[0]),v=(result.vertices[i+1]-b[1])/(b[3]-b[1]);
+        if(!std::isfinite(u)||!std::isfinite(v)||std::abs(u)>std::numeric_limits<float>::max()||std::abs(v)>std::numeric_limits<float>::max()) {
+            error="fill float32 position/UV precision insufficient";return false;
+        }
+        result.uvs.push_back(static_cast<float>(u));result.uvs.push_back(static_cast<float>(v));
+    }
+    result.fillResult=true;result.normalizeFill=options.normalizeFill;
+    result.fringeWidth=options.vertexAA?options.fringe:0;
+    result.sdfStats.totalMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
+    result.sdfStats.triangles=(result.triangles?result.VertexCount():result.indices.size())/3;
+    result.sdfStats.outputBytes=(result.vertices.size()+result.values.size()+result.uvs.size())*sizeof(float)+result.indices.size()*sizeof(uint16_t);
     return true;
 }
 
@@ -311,10 +449,14 @@ bool BuildStrokeMesh(
     {
         if (contour.first.size() < 2) continue;
         std::vector<std::vector<std::pair<float, float>>> one(1, contour.first);
-        Fringe::ExpandStroke(one, contour.second, width, options.fringe, options.cap,
-                             options.join, options.miterLimit, options.tessTol, triangles);
+        if (!Fringe::ExpandStroke(one, contour.second, width, options.vertexAA ? options.fringe : 0, options.cap,
+                             options.join, options.miterLimit, options.tessTol, triangles, options.sdf.maxVertices)) {
+            error="stroke subdivision precision or maxVertices exceeded; increase tessTol or reduce geometry";
+            return false;
+        }
     }
     if (triangles.empty()) { error = "path contains no drawable stroke contour"; return false; }
+    if(triangles.size()>options.sdf.maxVertices) {error="stroke exceeds maxVertices";return false;}
     if (!options.triangles && triangles.size() > 65535)
     {
         error = "indexed mesh exceeds 65535 vertices; use mode='triangles'";
@@ -322,9 +464,9 @@ bool BuildStrokeMesh(
     }
 
     result.triangles = options.triangles;
-    result.valueName = "alphas";
+    result.valueName = options.vertexAA ? "alphas" : nullptr;
     result.vertices.reserve(triangles.size() * 2);
-    result.values.reserve(triangles.size());
+    if (options.vertexAA) result.values.reserve(triangles.size());
     result.indices.reserve(options.triangles ? 0 : triangles.size());
     for (size_t i = 0; i < triangles.size(); ++i)
     {

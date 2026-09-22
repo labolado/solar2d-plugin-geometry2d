@@ -108,6 +108,8 @@ copy /Y "$(TargetPath)" "%APPDATA%\Corona Labs\Corona Simulator\Plugins\"</Comma
     <ClCompile Include="..\shared\corona_buffer.cpp" />
     <ClCompile Include="..\shared\mesh_result.cpp" />
     <ClCompile Include="..\shared\mesh_builder.cpp" />
+    <ClCompile Include="..\shared\sdf_builder.cpp" />
+    <ClCompile Include="..\shared\earcut_stroke_builder.cpp" />
     <ClCompile Include="..\shared\polypartition_module.cpp" />
     <ClCompile Include="..\shared\earcut_module.cpp" />
     <ClCompile Include="..\shared\mesh_module.cpp" />

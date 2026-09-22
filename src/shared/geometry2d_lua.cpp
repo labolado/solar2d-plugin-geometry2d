@@ -9,6 +9,25 @@
 
 namespace Geometry2D {
 
+size_t ValidateDenseArray(lua_State *L, int arg, const char *context)
+{
+    if (!lua_istable(L, arg)) luaL_error(L, "%s must be an array", context);
+    arg = CoronaLuaNormalize(L, arg);
+    size_t count = lua_objlen(L, arg), seen = 0;
+    if (count > static_cast<size_t>(std::numeric_limits<int>::max()))
+        luaL_error(L, "%s array is too large", context);
+    lua_pushnil(L);
+    while (lua_next(L, arg))
+    {
+        double key = lua_tonumber(L, -2);
+        if (lua_type(L, -2) != LUA_TNUMBER || key < 1 || key > count || key != std::floor(key))
+            luaL_error(L, "%s must be a dense array with only array entries", context);
+        ++seen; lua_pop(L, 1);
+    }
+    if (seen != count) luaL_error(L, "%s must be a dense array", context);
+    return count;
+}
+
 bool IsFlatPolygonTable(lua_State *L, int arg)
 {
     if (!lua_istable(L, arg)) return false;
@@ -23,12 +42,10 @@ bool IsFlatPolygonTable(lua_State *L, int arg)
 static bool ReadPolygonFromTable(lua_State *L, int arg, TPPLPoly &poly, bool isHole)
 {
     arg = CoronaLuaNormalize(L, arg);
-    size_t n = lua_objlen(L, arg);
-    if (n < 6 || (n % 2) != 0) return false;
-
+    size_t n = ValidateDenseArray(L, arg, "polygon");
+    if ((n % 2) != 0) luaL_error(L, "Polygon coordinates must be x/y pairs");
     int count = static_cast<int>(n / 2);
-    poly.Init(count);
-    poly.SetHole(isHole);
+    if (count >= 3) { poly.Init(count); poly.SetHole(isHole); }
     for (int i = 0; i < count; ++i)
     {
         lua_rawgeti(L, arg, static_cast<int>(i * 2 + 1));
@@ -36,14 +53,17 @@ static bool ReadPolygonFromTable(lua_State *L, int arg, TPPLPoly &poly, bool isH
         if (lua_type(L, -2) != LUA_TNUMBER || lua_type(L, -1) != LUA_TNUMBER)
             luaL_error(L, "Polygon coordinates must be numbers");
         lua_Number x = lua_tonumber(L, -2), y = lua_tonumber(L, -1);
-        if (!std::isfinite(static_cast<double>(x)) || !std::isfinite(static_cast<double>(y)))
-            luaL_error(L, "Polygon coordinates must be finite");
-        poly[i].x = static_cast<tppl_float>(x);
-        poly[i].y = static_cast<tppl_float>(y);
-        poly[i].id = static_cast<int>(i);
+        if (!std::isfinite(static_cast<double>(x)) || !std::isfinite(static_cast<double>(y)) ||
+            std::abs(x) > std::numeric_limits<float>::max() || std::abs(y) > std::numeric_limits<float>::max())
+            luaL_error(L, "Polygon coordinates must be finite floats");
+        if (count >= 3) {
+            poly[i].x = static_cast<tppl_float>(x);
+            poly[i].y = static_cast<tppl_float>(y);
+            poly[i].id = static_cast<int>(i);
+        }
         lua_pop(L, 2);
     }
-    return true;
+    return count >= 3;
 }
 
 enum class ScalarType { Float32, Float64, Int32 };
@@ -91,8 +111,9 @@ static bool ReadPolygonFromBytes(lua_State *L, int arg, TPPLPoly &poly, bool isH
             std::memcpy(values, bytes, sizeof(values));
             x = values[0]; y = values[1];
         }
-        if (!std::isfinite(x) || !std::isfinite(y))
-            luaL_error(L, "Packed polygon coordinates must be finite");
+        if (!std::isfinite(x) || !std::isfinite(y) ||
+            std::abs(x) > std::numeric_limits<float>::max() || std::abs(y) > std::numeric_limits<float>::max())
+            luaL_error(L, "Packed polygon coordinates must be finite floats");
         poly[i].x = static_cast<tppl_float>(x);
         poly[i].y = static_cast<tppl_float>(y);
         poly[i].id = static_cast<int>(i);
@@ -228,6 +249,7 @@ bool ReadEarcutPolygon(lua_State *L, int arg, Polygon &poly)
         lua_getfield(L, arg, "poly");
         if (!lua_isnil(L, -1))
         {
+            if (!lua_istable(L, -1)) luaL_error(L, "poly must be a ring table or typed buffer descriptor");
             Ring outer;
             bool ok = ReadRing(L, -1, outer);
             lua_pop(L, 1);
@@ -235,12 +257,15 @@ bool ReadEarcutPolygon(lua_State *L, int arg, Polygon &poly)
             poly.push_back(std::move(outer));
 
             lua_getfield(L, arg, "holes");
+            if (!lua_isnil(L, -1) && !lua_istable(L, -1))
+                luaL_error(L, "holes must be an array");
             if (lua_istable(L, -1))
             {
-                size_t count = lua_objlen(L, -1);
+                size_t count = ValidateDenseArray(L, -1, "holes");
                 for (size_t i = 1; i <= count; ++i)
                 {
                     lua_rawgeti(L, -1, static_cast<int>(i));
+                    if (!lua_istable(L, -1)) luaL_error(L, "Each hole must be a ring table or typed buffer descriptor");
                     Ring hole;
                     ok = ReadRing(L, -1, hole);
                     lua_pop(L, 1);
@@ -262,10 +287,11 @@ bool ReadEarcutPolygon(lua_State *L, int arg, Polygon &poly)
         return true;
     }
 
-    size_t count = lua_objlen(L, arg);
+    size_t count = ValidateDenseArray(L, arg, "polygon rings");
     for (size_t i = 1; i <= count; ++i)
     {
         lua_rawgeti(L, arg, static_cast<int>(i));
+        if (!lua_istable(L, -1)) luaL_error(L, "Each polygon ring must be a table or typed buffer descriptor");
         Ring ring;
         bool ok = ReadRing(L, -1, ring);
         lua_pop(L, 1);
@@ -300,8 +326,11 @@ static const MeshOptionDefinition kMeshOptionDefinitions[] = {
     {"fringe", OptionFringe}, {"join", OptionJoin},
     {"miterLimit", OptionMiterLimit}, {"tessTol", OptionTessTol},
     {"cap", OptionCap}, {"closed", OptionClosed}, {"refine", OptionRefine},
-    {"mode", OptionMode}, {"output", OptionOutput}, {"distance", OptionDistance},
-    {"distanceSign", OptionDistanceSign}, {"maxCurvePoints", OptionMaxCurvePoints},
+    {"mode", OptionMode}, {"output", OptionOutput}, {"maxCurvePoints", OptionMaxCurvePoints},
+    {"method", OptionSDF}, {"innerRange", OptionSDF}, {"outerRange", OptionSDF},
+    {"distanceTolerance", OptionSDF}, {"distanceTransform", OptionSDF},
+    {"maxWork", OptionSDF}, {"maxVertices", OptionSDF | OptionLimits},
+    {"aa", OptionAA}, {"aaWidth", OptionAA}, {"topology", OptionTopology},
     {"legacyUVs", OptionLegacyUVs}, {"dashPattern", OptionDashPattern},
     {"dashOffset", OptionDashOffset}, {"maxDashSegments", OptionMaxDashSegments},
     {"fillRule", OptionFillRule}, {"intersections", OptionIntersections},
@@ -388,7 +417,7 @@ static size_t ReadPositiveIntegerField(lua_State *L, int arg, const char *name,
     lua_pop(L, 1);
     if (!std::isfinite(static_cast<double>(number)) || number < 1.0 ||
         std::floor(static_cast<double>(number)) != number ||
-        number > static_cast<lua_Number>(std::numeric_limits<size_t>::max()))
+        number >= static_cast<lua_Number>(std::numeric_limits<size_t>::max()))
         luaL_error(L, "Option '%s' must be a positive integer", name);
     return static_cast<size_t>(number);
 }
@@ -448,10 +477,57 @@ MeshOptions GetMeshOptions(lua_State *L, int arg, uint32_t allowed,
                            const char *context, const MeshOptions *defaults)
 {
     MeshOptions result = defaults ? *defaults : MeshOptions();
+    // Public distance defaults are independent of native algorithm fixtures.
+    if (!defaults && (allowed & OptionSDF)) result.earcutBackend = true;
     if (lua_isnoneornil(L, arg)) return result;
     if (!lua_istable(L, arg)) luaL_argerror(L, arg, "Expected an options table");
     arg = CoronaLuaNormalize(L, arg);
+    if (allowed & OptionSDF) {
+        const char *backend = ReadStringField(L, arg, "method");
+        if (backend) {
+            if (std::strcmp(backend, "local") == 0) result.earcutBackend = true;
+            else if (std::strcmp(backend, "partition") == 0) result.earcutBackend = false;
+            else luaL_error(L, "method must be 'partition' or 'local'");
+        }
+        if (result.earcutBackend)
+            allowed |= OptionMiterLimit;
+    }
     ValidateMeshOptionFields(L, arg, allowed, context);
+
+    if (allowed & OptionAA) {
+        const char *aa = ReadStringField(L, arg, "aa");
+        if (aa && std::strcmp(aa,"none")==0) result.vertexAA=false;
+        else if (aa && std::strcmp(aa,"vertex")==0) result.vertexAA=true;
+        else if (aa) luaL_error(L,"aa must be 'none' or 'vertex'");
+        result.fringe=ReadFiniteNumberField(L,arg,"aaWidth",result.fringe,false);
+        if (!result.vertexAA) {
+            lua_getfield(L,arg,"aaWidth");
+            if (!lua_isnil(L,-1)) luaL_error(L,"aaWidth is not supported when aa='none'");
+            lua_pop(L,1);
+            if (allowed & OptionTopology) {
+                for (const char* field : {"join","miterLimit"}) {
+                    lua_getfield(L,arg,field);
+                    if (!lua_isnil(L,-1)) luaL_error(L,"%s is not supported by fill aa='none'",field);
+                    lua_pop(L,1);
+                }
+                if (!(allowed & OptionMaxCurvePoints)) {
+                    lua_getfield(L,arg,"tessTol");
+                    if(!lua_isnil(L,-1)) luaL_error(L,"tessTol is not supported by util fill aa='none'");
+                    lua_pop(L,1);
+                }
+            }
+        }
+    }
+    if (allowed & OptionTopology) {
+        const char* topology=ReadStringField(L,arg,"topology");
+        if (topology && std::strcmp(topology,"direct")==0) result.normalizeFill=false;
+        else if (topology && std::strcmp(topology,"normalize")==0) result.normalizeFill=true;
+        else if (topology) luaL_error(L,"topology must be 'direct' or 'normalize'");
+    }
+    if (allowed & OptionLimits) {
+        result.sdf.maxVertices=ReadPositiveIntegerField(L,arg,"maxVertices",result.sdf.maxVertices);
+        if(result.sdf.maxVertices>1000000) luaL_error(L,"maxVertices must be <= 1000000");
+    }
 
     if (allowed & OptionFringe)
         result.fringe = ReadFiniteNumberField(L, arg, "fringe", result.fringe, true);
@@ -459,8 +535,64 @@ MeshOptions GetMeshOptions(lua_State *L, int arg, uint32_t allowed,
         result.miterLimit = ReadFiniteNumberField(L, arg, "miterLimit", result.miterLimit, false);
     if (allowed & OptionTessTol)
         result.tessTol = ReadFiniteNumberField(L, arg, "tessTol", result.tessTol, false);
-    if (allowed & OptionDistance)
-        result.distance = ReadFiniteNumberField(L, arg, "distance", result.distance, false);
+    if (allowed & OptionSDF)
+    {
+        auto reject = [&](const char *name) {
+            lua_getfield(L, arg, name);
+            if (!lua_isnil(L, -1)) luaL_error(L, "%s is not supported by method='local'", name);
+            lua_pop(L, 1);
+        };
+        if (result.earcutBackend) {
+            reject("distanceTolerance"); reject("distanceTransform");
+        }
+        auto range = [&](const char *name, double fallback) {
+            lua_getfield(L, arg, name);
+            if (lua_isnil(L, -1)) { lua_pop(L, 1); return fallback; }
+            double value = lua_tonumber(L, -1);
+            if (lua_type(L, -1) != LUA_TNUMBER || !std::isfinite(value) ||
+                value < 0 || (value == 0 && std::strcmp(name,"innerRange")!=0) || value > std::numeric_limits<float>::max())
+                luaL_error(L, "%s must be finite and positive (innerRange may be zero)", name);
+            lua_pop(L, 1);
+            return value;
+        };
+        result.sdf.innerRange = range("innerRange", result.sdf.innerRange);
+        if(result.earcutBackend && result.sdf.innerRange==0)
+            luaL_error(L,"method='local' requires positive innerRange; use method='partition' for an exterior-only distance band");
+        result.sdf.geometry=result.sdf.innerRange==0 ? SDFGeometry::FillAA : SDFGeometry::InnerStroke;
+        result.sdf.outerRange = range("outerRange", result.sdf.outerRange);
+        result.sdf.distanceTolerance = range("distanceTolerance", result.sdf.distanceTolerance);
+        if (result.sdf.distanceTolerance < 0.0001)
+            luaL_error(L, "distanceTolerance must be at least 0.0001");
+        result.sdf.maxWork = ReadPositiveIntegerField(L, arg, "maxWork", result.sdf.maxWork);
+        result.sdf.maxVertices = ReadPositiveIntegerField(L, arg, "maxVertices", result.sdf.maxVertices);
+        if (result.sdf.maxVertices > 1000000 || result.sdf.maxWork > 20000000)
+            luaL_error(L, "SDF limits: maxVertices <= 1000000, maxWork <= 20000000");
+        lua_getfield(L, arg, "distanceTransform");
+        if (!lua_isnil(L, -1))
+        {
+            if (!lua_istable(L, -1) || lua_objlen(L, -1) != 6)
+                luaL_error(L, "distanceTransform must be a dense array {a,b,c,d,tx,ty}");
+            int transform = CoronaLuaNormalize(L, -1);
+            lua_pushnil(L);
+            while (lua_next(L, transform))
+            {
+                double key = lua_tonumber(L, -2);
+                if (lua_type(L, -2) != LUA_TNUMBER || key < 1 || key > 6 || key != std::floor(key))
+                    luaL_error(L, "distanceTransform must contain exactly six array entries");
+                lua_pop(L, 1);
+            }
+            for (int i = 0; i < 6; ++i)
+            {
+                lua_rawgeti(L, transform, i + 1);
+                double v = lua_tonumber(L, -1);
+                if (lua_type(L, -1) != LUA_TNUMBER || !std::isfinite(v) || std::abs(v) > std::numeric_limits<float>::max())
+                    luaL_error(L, "distanceTransform entries must be finite floats");
+                result.sdf.transform[i] = v;
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
+    }
     if (allowed & OptionDashPattern)
         result.dashPattern = ReadDashPatternField(L, arg);
     if (allowed & OptionDashOffset)
@@ -502,14 +634,6 @@ MeshOptions GetMeshOptions(lua_State *L, int arg, uint32_t allowed,
         else if (s && std::strcmp(s, "buffers") == 0) result.output = OutputMode::Buffers;
         else if (s && std::strcmp(s, "mesh") == 0) result.output = OutputMode::Mesh;
         else if (s) luaL_error(L, "Invalid output '%s'; expected 'table', 'buffers', or 'mesh'", s);
-    }
-
-    if (allowed & OptionDistanceSign)
-    {
-        const char *s = ReadStringField(L, arg, "distanceSign");
-        if (s && std::strcmp(s, "outsideNegative") == 0) result.outsidePositive = false;
-        else if (s && std::strcmp(s, "outsidePositive") == 0) result.outsidePositive = true;
-        else if (s) luaL_error(L, "Invalid distanceSign '%s'; expected 'outsideNegative' or 'outsidePositive'", s);
     }
 
     if (allowed & OptionFillRule)

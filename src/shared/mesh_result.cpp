@@ -61,7 +61,12 @@ static void PushGeometryBufferTable(lua_State *L, const MeshResult &mesh, bool l
                          mesh.VertexCount());
     lua_setfield(L, -2, "vertices");
 
-    if (legacyUVs)
+    if (!mesh.uvs.empty())
+    {
+        PushBufferDescriptor(L, mesh.uvs.data(), mesh.uvs.size() * sizeof(float), mesh.VertexCount());
+        lua_setfield(L, -2, "uvs");
+    }
+    else if (legacyUVs)
     {
         std::vector<float> uvs(mesh.vertices.size(), 0.0f);
         float minX = mesh.vertices[0], maxX = mesh.vertices[0];
@@ -103,6 +108,49 @@ static void PushGeometryBufferTable(lua_State *L, const MeshResult &mesh, bool l
     }
 }
 
+static void PushSDFMetadata(lua_State *L, const MeshResult &mesh)
+{
+    if (!mesh.sdfResult && !mesh.fillResult) return;
+    auto number = [&](const char *name, double value) {
+        lua_pushnumber(L, value); lua_setfield(L, -2, name);
+    };
+    lua_pushstring(L,mesh.sdfResult?"distance":"fill");lua_setfield(L,-2,"kind");
+    if(mesh.sdfResult) {
+        lua_pushstring(L,mesh.earcutBackend?"local":"partition");lua_setfield(L,-2,"method");
+        lua_pushboolean(L,mesh.earcutBackend);lua_setfield(L,-2,"approximate");
+        number("innerRange", mesh.sdfOptions.geometry==SDFGeometry::InnerStroke ? mesh.sdfOptions.innerRange : 0);
+        number("outerRange", mesh.sdfOptions.outerRange);
+    } else {
+        lua_pushstring(L,mesh.fringeWidth>0?"vertex":"none");lua_setfield(L,-2,"aa");
+        if(mesh.fringeWidth>0)number("aaWidth",mesh.fringeWidth);
+        lua_pushstring(L,mesh.normalizeFill?"normalize":"direct");lua_setfield(L,-2,"topology");
+    }
+    lua_createtable(L, 4, 0);
+    for (int i=0;i<4;++i) { lua_pushnumber(L,mesh.uvBounds[i]); lua_rawseti(L,-2,i+1); }
+    lua_setfield(L, -2, "uvBounds");
+    lua_createtable(L, 0, 11);
+    if (mesh.sdfResult && !mesh.earcutBackend) {
+        number("prepareMs", mesh.sdfStats.prepareMs);
+        number("partitionMs", mesh.sdfStats.partitionMs);
+        number("triangulateMs", mesh.sdfStats.triangulateMs);
+        number("inputEdges", mesh.sdfStats.inputEdges);
+        number("cells", mesh.sdfStats.cells);
+        number("work", mesh.sdfStats.work);
+        number("uniqueVertices", mesh.sdfStats.uniqueVertices);
+    }
+    if (mesh.sdfResult && mesh.earcutBackend) {
+        number("inputEdges", mesh.sdfStats.inputEdges);
+        number("work", mesh.sdfStats.work);
+        number("uniqueVertices", mesh.sdfStats.uniqueVertices);
+    }
+    number("totalMs", mesh.sdfStats.totalMs);
+    number("outputVertices", mesh.VertexCount());
+    number("indices", mesh.indices.size());
+    number("triangles", mesh.sdfStats.triangles);
+    number("outputBytes", mesh.sdfStats.outputBytes);
+    lua_setfield(L, -2, "stats");
+}
+
 static void PushAuxiliaryBuffers(lua_State *L, const MeshResult &mesh)
 {
     lua_createtable(L, 0, mesh.valueName ? (HasAlphaValues(mesh) ? 3 : 2) : 1);
@@ -119,6 +167,7 @@ static void PushAuxiliaryBuffers(lua_State *L, const MeshResult &mesh)
         PushFillVertexColors(L, mesh);
         lua_setfield(L, -2, "fillVertexColors");
     }
+    PushSDFMetadata(L, mesh);
 }
 
 static int PushTableResult(lua_State *L, const MeshResult &mesh)
@@ -126,6 +175,11 @@ static int PushTableResult(lua_State *L, const MeshResult &mesh)
     lua_createtable(L, 0, mesh.triangles ? 3 : 4);
     PushFloatTable(L, mesh.vertices);
     lua_setfield(L, -2, "vertices");
+    if (!mesh.uvs.empty())
+    {
+        PushFloatTable(L, mesh.uvs);
+        lua_setfield(L, -2, "uvs");
+    }
     if (mesh.valueName)
     {
         PushFloatTable(L, mesh.values);
@@ -138,6 +192,7 @@ static int PushTableResult(lua_State *L, const MeshResult &mesh)
     }
     lua_pushstring(L, mesh.triangles ? "triangles" : "indexed");
     lua_setfield(L, -2, "mode");
+    PushSDFMetadata(L, mesh);
     return 1;
 }
 
@@ -150,6 +205,7 @@ static int PushBufferResult(lua_State *L, const MeshResult &mesh, bool legacyUVs
                              mesh.values.size(), 1);
         lua_setfield(L, -2, mesh.valueName);
     }
+    PushSDFMetadata(L, mesh);
     return 1;
 }
 
@@ -159,9 +215,17 @@ static int PushDisplayMesh(lua_State *L, const MeshResult &mesh, bool legacyUVs)
     int attributesIndex = lua_gettop(L);
 
     lua_getglobal(L, "display");
-    if (!lua_istable(L, -1)) return luaL_error(L, "display API is unavailable");
+    if (!lua_istable(L, -1))
+    {
+        lua_settop(L, attributesIndex - 1);
+        return PushGeometryFailure(L, "display API is unavailable");
+    }
     lua_getfield(L, -1, "newMesh");
-    if (!lua_isfunction(L, -1)) return luaL_error(L, "display.newMesh is unavailable");
+    if (!lua_isfunction(L, -1))
+    {
+        lua_settop(L, attributesIndex - 1);
+        return PushGeometryFailure(L, "display.newMesh is unavailable");
+    }
     PushGeometryBufferTable(L, mesh, legacyUVs, attributesIndex);
     if (lua_pcall(L, 1, 1, 0) != 0)
     {
@@ -175,6 +239,11 @@ static int PushDisplayMesh(lua_State *L, const MeshResult &mesh, bool legacyUVs)
         lua_pushnil(L);
         lua_insert(L, -2);
         return 2;
+    }
+    if (lua_isnil(L, -1))
+    {
+        lua_settop(L, attributesIndex - 1);
+        return PushGeometryFailure(L, "display.newMesh returned nil");
     }
     lua_remove(L, -2); // remove display table, leave mesh
     lua_insert(L, attributesIndex); // return mesh before attributes

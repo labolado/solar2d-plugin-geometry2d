@@ -246,14 +246,14 @@ The `fringe`, `util`, and `path` mesh functions return data ready for
 
 ```lua
 { vertices = {x1,y1, ...}, alphas = {a1, ...}, indices = {i1, ...}, mode = "indexed" }
--- meshSDF variants name the value array `distances` instead of `alphas`
+-- meshDistance variants name the value array `distances` instead of `alphas`
 ```
 
 All `util` and `path` mesh functions accept `opts.output`:
 
 | Value | Result |
 |-------|--------|
-| `"table"` | Default. Existing Lua number tables; fully backward-compatible. |
+| `"table"` | Default. Lua number tables. SDF v2 changes distance semantics (see migration below). |
 | `"buffers"` | Mesh data whose `vertices`, `indices`, and `alphas` / `distances` are owning `CoronaMemory` descriptors. Alpha meshes also include packed `fillVertexColors`. |
 | `"mesh"` | Returns `displayMesh, attributes`; alpha meshes pass packed vertex colors directly to `display.newMesh()`, and the second result retains all packed auxiliary attributes. |
 
@@ -265,9 +265,9 @@ SDF distance output does not bind a paint, shader, or vertex extension.
 Packed SDF output can be written directly with Solar2D's bulk custom-attribute API:
 
 ```lua
-local data = Geometry2D.util.meshSDF(poly, {
+local data = Geometry2D.util.meshDistance(poly, {
     output = "buffers",
-    distanceSign = "outsidePositive",
+    innerRange = 8, outerRange = 3,
 })
 local mesh = display.newMesh(data)
 mesh.fillExtension = "MegaMechanicalData"
@@ -330,12 +330,13 @@ descriptor to `display.newMesh()` and returns it as
 | `refine` | `false` | Delaunay refinement after earcut |
 | `mode` | `"indexed"` | Mesh layout: `"indexed"` (shared vertex pool + indices) or `"triangles"` (raw triangle list, no indices table) |
 | `output` | `"table"` | `"table"`, `"buffers"`, or `"mesh"` |
-| `distanceSign` | `"outsideNegative"` | SDF only: `"outsideNegative"` or `"outsidePositive"` |
 | `legacyUVs` | `false` | With buffer/mesh output, include normalized UVs for Solar2D builds from before the missing-UV buffer fix |
 
 `legacyUVs=true` requires `output="buffers"` or `output="mesh"`. Current
 Solar2D builds synthesize normalized UVs when `uvs` is absent, so the default
-avoids generating and copying a redundant buffer.
+avoids generating a redundant stroke UV buffer. Fill and distance outputs always
+supply UVs referenced to original contour bounds; distance rejects legacyUVs.
+Fill accepts legacyUVs only for buffers/mesh but already has UVs, so no extra buffer is made.
 
 Options are strictly validated per function. Unknown names, invalid enum values,
 wrong types, non-finite numbers, and options irrelevant to that function raise a
@@ -357,6 +358,9 @@ end
 
 Calling-contract errors still raise normally: wrong argument types, malformed
 path commands, unknown options, invalid enum values, and non-finite coordinates.
+Empty polygon/group arrays and well-formed rings with fewer than three points
+return `nil, message` consistently for fill and distance entries. Malformed
+coordinates still raise even in a short ring.
 For `output="mesh"`, success returns `displayMesh, attributes`; failure returns
 `nil, message`.
 
@@ -413,47 +417,280 @@ local strip = Geometry2D.fringe.stroke(poly, width[, opts])
 
 ## util
 
-Complete "solid fill + AA fringe" meshes in one call.
+Choose the requested product, not a backend/geometry combination:
+
+| Entry | Result | Default |
+|---|---|---|
+| `util.meshFill(poly[, opts])` | Filled mesh, optionally vertex-alpha AA | `aa="vertex", topology="direct"` |
+| `util.meshFillGroups(groups[, opts])` | Same, multiple groups in one result | Same |
+| `util.meshDistance(poly[, opts])` | Fill plus signed-distance bands, always `distances` | `method="local", innerRange=8, outerRange=2` |
+| `util.meshDistanceGroups(groups[, opts])` | Same, multiple groups | Same |
+| `path.meshStroke(path, width[, opts])` | Fixed-width centered stroke, optionally vertex-alpha AA | `aa="vertex"` |
+
+Path variants `path.meshFill` / `path.meshDistance` accept absolute Bezier commands
+and the existing flatten/fill-rule/intersection policy. No legacy `meshSDF` aliases
+remain. `backend` and `geometry` are not accepted by these public mesh functions.
+
+### Fill and centered stroke AA
 
 ```lua
--- Vertex-alpha version (no shader needed)
-local data = Geometry2D.util.meshFill(poly[, opts])
--- opts: {fringe=1, join=..., miterLimit=..., tessTol=..., refine=...,
---        mode=..., output=...}
--- Returns {vertices, alphas, indices, mode}
-
-local data = Geometry2D.util.meshFillGroups(groups[, opts])
--- groups: an array of meshFill inputs, merged into ONE mesh
-
--- SDF version (for exact 1px AA via fwidth() in a fragment shader)
-local data = Geometry2D.util.meshSDF(poly[, opts])
--- opts: {distance=5, join=..., miterLimit=..., tessTol=..., refine=...,
---        mode=..., output=..., distanceSign=...}
--- Returns {vertices, distances, indices, mode}
---   distances: 0 on the body/boundary, 0 → -distance across the band
---   (negative outside); body vertices are the boundary vertices — no
---   interior values needed, the AA ramp is alpha 1 for every d >= 0
-
-local data = Geometry2D.util.meshSDFGroups(groups[, opts])
+local fill = assert(Geometry2D.util.meshFill(poly, {
+    aa = "none",             -- or "vertex" (default)
+    topology = "direct",     -- or "normalize"
+    mode = "indexed",
+    output = "buffers",
+}))
+local stroke = assert(Geometry2D.path.meshStroke(path, 8, {
+    aa = "vertex", aaWidth = 1,
+    join = "round", cap = "round", output = "buffers",
+}))
 ```
 
-Fill skirts partition adjacent edge bands at reflex corners; their distance
-(or alpha) agrees at the shared bisector. Convex corners retain the requested
-bevel/round/limited-miter join. Group outer/hole roles are explicit and do not
-depend on input winding; body triangulation and the original boundary are unchanged.
-This is a local join correction, not a global offset union: bands from
-non-adjacent edges, different rings or groups can still overlap when the band
-width exceeds a local gap (including a small hole). Short edges can bring such
-non-adjacent bands together. Choose a narrower band for these cases; this API
-does not guarantee a globally non-overlapping SDF mesh for arbitrary widths.
+`aa="none"` emits no `alphas`, `fillVertexColors`, or distances. `aa="vertex"`
+emits float alpha coverage; buffers/mesh also include packed RGBA8 colors.
+`aaWidth` is a positive finite local-coordinate width (default 1), accepted only
+with vertex AA. High-level mesh functions no longer accept `fringe`; the low-level
+`fringe.fill/stroke` module keeps its existing `fringe` option unchanged.
 
-SDF fragment shader recipe:
+Fill with no AA rejects `join` and `miterLimit`; stroke still uses these for its
+solid joins. `tessTol` controls round geometry or path flattening; util fill
+with no AA rejects tessTol. `refine` independently enables earcut refinement.
+`maxVertices` defaults to 1,000,000 and cannot exceed that
+value; both input fill points and final output are bounded. It is not a peak
+memory or time budget. Indexed output still has the 65,535 vertex engine limit.
+Round subdivision fails with `nil, message` if the requested tolerance cannot
+be represented safely or exceeds the subdivision/output limit; it is not silently
+coarsened. Increase `tessTol` or simplify the geometry explicitly.
+
+`topology="direct"` trusts polygon groups and directly triangulates them.
+`topology="normalize"` uses Clipper2 at six decimal places to subtract each
+group's holes, then union the groups before the SAME fill/fringe construction.
+An empty normalized region returns `nil, message`. Ring roles come from group
+structure, not winding; islands belong in separate groups. Inputs are not mutated.
+Normalization resolves fill regions, **not** global overlap of external AA bands.
+No-AA normalized fill is the replacement for the former normalized SDF fill.
+
+For path input, intersection policy runs FIRST. `topology="normalize"` does not
+bypass `intersections="error"`; explicitly use `intersections="resolve"` for
+crossing paths. `clipperPrecision` controls that path preprocessing, independently
+of the six-decimal polygon-group normalization. Avoid enabling both normalization
+steps when the second is unnecessary.
+
+Fill always supplies material UVs referenced to the original unpadded input
+bounds, plus `kind="fill"`, `aa`, optional `aaWidth`, `topology`, `uvBounds` and
+`stats`. This includes table/buffers and the second return of `output="mesh"`.
+For path inputs (including retained fills), these bounds come from the flattened
+path BEFORE fill-rule/intersection normalization, even when contours cancel.
+Path distance meshes use the same convention.
+Stroke retains its ordinary mesh/alpha output and does not produce distances.
+Stroke UVs are left to Solar2D unless `legacyUVs=true` is requested.
+
+Centered stroke expands half the width on either side. It is NOT a fill-clipped
+inside stroke or a globally unioned translucent stroke. Local AA bands can
+overlap at distant edges, tight contours or different groups. Fill and stroke
+rendered separately (including retained views) do not promise unified opacity.
+
+### Distance meshes
+
+```lua
+local data = assert(Geometry2D.util.meshDistance(poly, {
+    method = "partition",    -- explicit global method; default is "local"
+    innerRange = 8,
+    outerRange = 2,
+    distanceTolerance = 0.1,  -- partition only
+    maxWork = 2000000,
+    maxVertices = 1000000,
+    mode = "indexed", output = "buffers",
+}))
+```
+
+All successful distance calls return `distances`, no `alphas` or vertex colors.
+All three distance entries default to `method="local"`, including calls without
+an options table. Explicitly select `method="partition"` for `innerRange=0`,
+`distanceTolerance`, or `distanceTransform`; these options do not select a method
+automatically. Default local output has `approximate=true` and its limitations below.
+Metadata: `kind="distance"`, `method`, `approximate` (true for local),
+`innerRange`, `outerRange`, original `uvBounds`, and `stats`.
+The old `backend`, `geometry`, and `sdfVersion` output fields are removed.
+The mesh encodes distances; the caller's shader decides the appearance.
+Nothing automatically installs a shader or vertex extension.
+
+`method="partition"` retains the global distance-envelope implementation.
+`innerRange=0` explicitly requests an exterior-only distance band with body value
+zero. It still returns distances, never implicitly switches to vertex-alpha or
+plain fill. Use the example shader's one-sided AA branch for this case; a centered
+distance-zero transition would make the entire zero-valued body half covered.
+An exterior-only mesh cannot implement an internal stroke.
+
+`method="local"` retains local miter inner/outer bands plus earcut core.
+It requires positive innerRange and outerRange; `innerRange=0` is rejected.
+It accepts `miterLimit` (default 2.4), not distanceTolerance/distanceTransform.
+It rejects core collapse, local crossings, excess miter/work/output limits;
+it does not repair split/disappearing cores or union overlapping groups/bands.
+Its interpolated distance is approximate without a uniform error bound.
+It can reuse the distance shader but is not an equivalent-accuracy replacement.
+
+Neither method accepts `aa`, `aaWidth`, `fringe`, `join`, `cap`, `refine`,
+`topology`, or `legacyUVs`. The util distance entries reject `tessTol`; path entries
+accept it strictly for curve flattening. No automatic fallback or lossy repair
+is enabled. The known backup 46/47 float32 failures remain unresolved.
+
+### Partition distance field
+
+The following refers to method="partition" with positive innerRange:
+The original contour is distance **zero**, the filled region is **negative**,
+and the empty region (including holes) is **positive**. Distances are in local
+coordinate units unless `distanceTransform` is provided. Interior values saturate
+at `-innerRange`; exterior geometry stops at `outerRange`. The shader, not this
+mesh boundary, limits exterior coverage to AA. Do not use `outerRange` as stroke width.
+
+`innerRange` must be non-negative and `outerRange` positive; both must be finite floats. `distanceTolerance`
+is a positive absolute distance error budget, at least `0.0001`. There is no
+`join` option: these are approximated Euclidean nearest-boundary distances, not
+independent miter/bevel strips. `path.meshDistance` additionally uses `tessTol` for
+curve flattening; that error is separate from `distanceTolerance`.
+
+The tessellator constructs a piecewise-affine approximation to each boundary
+segment's distance, partitions by the lower envelope of ALL relevant segments,
+clips it into the filled/empty regions, and triangulates the cells. Thus meeting
+bands, concave corners, small holes and neighboring exterior bands compete for
+coverage rather than drawing on top of one another. Deep fill is triangulated
+once without an area-dependent sampling grid. Circular endpoint distance uses
+adaptive angular facets: maximum error is controlled by `distanceTolerance`
+and the larger range, not a fixed high segment count. Shared scalar/position/UV
+vertices are indexed; triangles mode only expands the SAME result.
+If earcut cannot triangulate a weakly-simple touching cell with matching area,
+that cell is split into trapezoids at existing vertex Y events. This bounded
+fallback does not add a uniform grid or change the distance plane. Ordinary
+deep fill still uses its compact polygon triangulation.
+
+Group roles are structural, independent of winding. Each group is its outer
+region minus the union of its holes; groups are unioned before distance analysis.
+Put an island inside a hole in a separate group. Overlapping groups therefore
+form one filled region, not separately layered translucent shapes. A hole outside
+its own outer ring fails with `nil, message`. Input arrays are not mutated.
+For self-intersecting path commands, the existing `intersections="error"` default
+still applies; explicitly request `"resolve"` to normalize them. Direct util
+contours use non-zero boolean normalization; zero-area/degenerate rings fail.
+
+Precision and resource boundaries:
+
+- Boolean coordinates are quantized to `1e-6` in distance space; float32 output
+  adds rounding error. Do not rely on sub-grid features. Input edges or distinct
+  near-touching boundaries below an 8-grid-unit guard fail explicitly. Generated
+  cells/triangles within the few-grid-unit uncertainty envelope are removed;
+  non-negligible float32 flips, inconsistent
+  shared distances, or failed triangulation return `nil, message`.
+- Transformed coordinate magnitude plus range is limited to `1e7`; excessive
+  float32 mapping error also fails. Recenter/rescale large coordinates. The
+  angular approximation alone is bounded by `distanceTolerance`; this is NOT
+  an exact Euclidean SDF or an exact-real-arithmetic topology guarantee.
+- At most 256 angular facets; finer requested accuracy fails rather than being
+  silently weakened. `maxWork` defaults to 2,000,000 (maximum 20,000,000), and
+  `maxVertices` to 1,000,000 (maximum 1,000,000). Work is an operation budget,
+  not milliseconds or a byte allocator limit. Dense adjacent contours can incur
+  quadratic work; this implementation prioritizes bounded, correct cached output,
+  not guaranteed per-frame rebuilding of arbitrary complex paths.
+- Indexed output fails above 65,535 vertices with a triangles/splitting suggestion.
+  Triangle-list output is also bounded by `maxVertices`; nothing is truncated.
+  Split independent regions only if their AA supports do not meet; otherwise
+  splitting restores overdraw and is not a safe fallback. A rejected difficult
+  input can be simplified explicitly by the caller or rendered as fill-only
+  without AA; the plugin does not silently change its appearance.
+
+UVs are always `(localX-minX)/(maxX-minX), (localY-minY)/(maxY-minY)` using the
+UNPADDED original input bounds, returned as `uvBounds={minX,minY,maxX,maxY}`.
+They are not based on the AA mesh bounding box; exterior UVs can exceed `[0,1]`.
+For a different painting/atlas rectangle, remap via the original local position
+`uvBounds.xy + uv * (uvBounds.zw-uvBounds.xy)`. Clamping/wrapping belongs to the
+material. Do not repurpose UV.x for distance if the material needs those UVs.
+The independent `distances` descriptor has `componentCount=1` when present
+(all distance outputs). All distance methods retain the same material UV convention.
+
+`stats` reports native `prepareMs`, `partitionMs`, `triangulateMs`, `totalMs`,
+`inputEdges`, `cells`, `work`, `uniqueVertices`, `outputVertices`, `indices`,
+`triangles`, and `outputBytes`. Native timing excludes Lua parsing, descriptor
+copies, engine upload and rendering. `outputBytes` counts float32 position/UV/
+distance plus uint16 output indices, NOT Lua table overhead or GPU allocation.
+All stateless descriptors own their bytes and survive later calls. This is not
+end-to-end zero-copy; indexed native arrays are moved into the common output,
+then copied to owning userdata and synchronously consumed/copied by the engine.
+
+### SDF shader and transforms
+
+Runnable example: `examples/solar2d/sdf_shader.lua`; regression project:
+`python3 tests/run_simulator.py tests/sdf_simulator`.
+Use `shader.attach(mesh, true)` for its textured filter variant after assigning
+an image/gradient paint; the default generator variant uses solid colors.
+It keeps material UVs, transports distance through a one-float vertex extension,
+mixes premultiplied fill/stroke colors once, and applies one combined coverage.
+Use `params={strokeWidth,ready,innerRange,opacity}` and `fillColor`/`strokeColor`.
+Its saturated deep fill is explicitly treated as fill, not a stroke edge.
+Reserve `innerRange > maximumStrokeWidth + half of the largest AA footprint`
+and `outerRange > half of that footprint`. Width changes inside this budget only
+update shader uniforms. The shader does not know the missing unsaturated field
+beyond `innerRange`; setting width at/beyond saturation is unsupported.
 
 ```glsl
-float d = vDistance;                      // interpolated distance from the mesh
-float w = fwidth(d);                      // distance change across one screen pixel
-float a = smoothstep(-w, 0.0, d);         // opaque at the boundary, exact 1px fade
+float d = vDistance;
+float w = max(fwidth(d), 0.00001);
+float coverage = clamp(0.5 - d/w, 0.0, 1.0);
+float strokeMix = clamp(0.5 + (d + strokeWidth)/w, 0.0, 1.0);
+// Mix premultiplied RGBA, then multiply by coverage and overall opacity.
 ```
+
+`fwidth` produces an orientation-dependent pixel footprint (L1 gradient), not
+an analytic pixel-area integral. Very thin subpixel structures have limited
+coverage. Keep enough exterior range at the smallest scale: at scale 0.2,
+an axis-aligned one-pixel footprint is 5 local units; use at least 2.5 plus margin
+outside, more for diagonal edges. The default outer range of 2 is for near-unit
+scale, not a promise for every transform.
+
+Translation, rotation, reflection and uniform scale can reuse geometry if the
+range still covers AA. Local-width strokes scale with the object; uniform
+screen-width strokes can compensate width by scale, within the reserved range.
+Nonuniform scaling of a cached local-distance mesh preserves its local metric,
+NOT equal screen-space width. For screen-space widths pass
+`distanceTransform={a,b,c,d,tx,ty}`: compute distance after
+`X=a*x+c*y+tx, Y=b*x+d*y+ty`, then inverse-map positions back into local space.
+Use the actual local-to-screen-pixel transform (including content-to-pixel scale),
+not merely the object's own xScale/yScale when parents are transformed. Singular
+or ill-conditioned transforms fail. Rebuild when its linear metric changes;
+rigid screen motions need not rebuild. Distance units then are screen pixels.
+For coordinates relative to a display group, a translation-free pixel metric
+can be obtained without changing the input path:
+
+```lua
+local x0,y0 = group:localToContent(0,0)
+local x1,y1 = group:localToContent(1,0)
+local x2,y2 = group:localToContent(0,1)
+local pixelTransform = {
+    (x1-x0)/display.contentScaleX, (y1-y0)/display.contentScaleY,
+    (x2-x0)/display.contentScaleX, (y2-y0)/display.contentScaleY, 0, 0,
+}
+-- opts.distanceTransform = pixelTransform
+-- Translation is omitted intentionally: it does not change distances.
+```
+
+Curve flattening still precedes this transform, so tighten `tessTol` for strong
+magnification. With a cached local metric, `distanceTolerance` also scales into
+screen space; choose it for the largest intended magnification. With a pixel
+distance transform it is already a pixel error budget. Cached transformed UVs
+still map to the original local material.
+
+On this engine, a new mesh's bulk extension buffer is writable only AFTER its
+first completed render. Attach the example shader immediately (`ready=0`), wait
+for that render, write `distances`, then set `ready=1`. The pending mesh is
+transparent, not white. When replacing an on-screen mesh, retain the old object
+until the replacement is ready, then swap; do not delete it before preparing the
+replacement. This is a documented one-render preparation delay, not synchronous
+first-frame attribute initialization. No Solar2D source changes are required.
+
+### Migration (breaking API cleanup)
+
+See [mesh-api-migration.md](mesh-api-migration.md) for all removed names, option
+mapping, UV changes, shader attribute mapping and retained-view migration.
+Known float32 failures are not fixed by this API reorganization.
 
 ## path
 
@@ -475,7 +712,7 @@ local contours = Geometry2D.path.flatten(path, {
 })
 
 local data = Geometry2D.path.meshFill(path[, opts])
-local data = Geometry2D.path.meshSDF(path[, opts])
+local data = Geometry2D.path.meshDistance(path[, opts])
 local data = Geometry2D.path.meshStroke(path, width[, opts])
 ```
 
@@ -601,7 +838,7 @@ stroke.
 | `newView()` | Create a retained view table |
 | `updateView(view)` | Synchronize one view after shape changes |
 
-`configure()` accepts only `fringe`, `miterLimit`, `tessTol`, `refine`, `mode`,
+`configure()` accepts only `aa`, `aaWidth`, `miterLimit`, `tessTol`, `refine`, `mode`,
 `maxCurvePoints`, `maxDashSegments`, `fillRule`, `intersections`, and
 `clipperPrecision`. Omitted fields retain their current values. Fill and stroke
 join styles and the stroke cap/dash are deliberately set by their named methods.
@@ -633,10 +870,10 @@ the smallest containing outer contour. Stroke closure follows `Z`; setting
 With direct mesh output, auxiliary values are returned separately:
 
 ```lua
-local mesh, attributes = Geometry2D.path.meshSDF(path, {
+local mesh, attributes = Geometry2D.path.meshDistance(path, {
     output = "mesh",
     mode = "triangles",
-    distanceSign = "outsidePositive",
+    innerRange = 8, outerRange = 3,
 })
 
 mesh.fillExtension = "MegaMechanicalData"
@@ -654,14 +891,14 @@ renderer feature is enabled and the render state is compatible.
 
 | Function | Accepted options |
 |----------|------------------|
-| `path.flatten` | `tessTol`, `maxCurvePoints` |
-| `util.meshFill` | `fringe`, `join`, `miterLimit`, `tessTol`, `refine`, `mode`, `output`, `legacyUVs` |
-| `path.meshFill` | `fringe`, `join`, `miterLimit`, `tessTol`, `refine`, `mode`, `output`, `legacyUVs`, `fillRule`, `intersections`, `clipperPrecision` |
-| `util.meshSDF` | `distance`, `distanceSign`, `join`, `miterLimit`, `tessTol`, `refine`, `mode`, `output`, `legacyUVs` |
-| `path.meshSDF` | `distance`, `distanceSign`, `join`, `miterLimit`, `tessTol`, `refine`, `mode`, `output`, `legacyUVs`, `fillRule`, `intersections`, `clipperPrecision` |
-| `path.meshStroke` | `fringe`, `cap`, `join`, `miterLimit`, `tessTol`, `closed`, `dashPattern`, `dashOffset`, `maxDashSegments`, `mode`, `output`, `legacyUVs` |
+| `path.flatten` | tessTol, maxCurvePoints |
+| `util.meshFill` / `util.meshFillGroups` | aa, aaWidth, topology, join, miterLimit, tessTol, refine, maxVertices, mode, output, legacyUVs |
+| `path.meshFill` | Fill options plus maxCurvePoints, fillRule, intersections, clipperPrecision |
+| `util.meshDistance` / `util.meshDistanceGroups` | method, innerRange, outerRange, maxWork, maxVertices, mode, output; partition: distanceTolerance, distanceTransform; local: miterLimit |
+| `path.meshDistance` | Distance options plus tessTol, maxCurvePoints, fillRule, intersections, clipperPrecision |
+| `path.meshStroke` | aa, aaWidth, cap, join, miterLimit, tessTol, closed, dashPattern, dashOffset, maxDashSegments, maxCurvePoints, maxVertices, mode, output, legacyUVs |
 
-The three `path.mesh*` functions additionally accept `maxCurvePoints`.
+Options irrelevant to the selected mode are errors, as described above.
 
 ## clipper2
 
@@ -745,11 +982,11 @@ combining variable deltas with `polyTree=true` is a contract error.
 ## Example
 
 ```lua
--- Complete AA mesh for a polygon with a hole (one mesh, one draw call)
+-- Complete AA mesh for a polygon with a hole (one mesh; renderer costs vary)
 local data = Geometry2D.util.meshFill({
     { 0,0,  100,0,  100,100,  0,100 },      -- outer (clockwise on screen)
     { 30,30,  30,70,  70,70,  70,30 },      -- hole (counterclockwise on screen)
-}, { fringe = 2, join = "round" })
+}, { aaWidth = 2, join = "round" })
 
 local mesh = display.newMesh(data)
 for i = 1, mesh.fillVertexCount do

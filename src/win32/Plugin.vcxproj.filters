@@ -19,6 +19,12 @@
     <ClCompile Include="..\shared\mesh_result.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\shared\earcut_stroke_builder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\shared\sdf_builder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\shared\mesh_builder.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

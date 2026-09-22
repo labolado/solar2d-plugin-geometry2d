@@ -19,14 +19,14 @@ namespace Geometry2D {
 namespace {
 
 static constexpr uint32_t kPathFlattenOptions = OptionTessTol | OptionMaxCurvePoints;
-static constexpr uint32_t kPathFillOptions = OptionFringe | OptionJoin | OptionMiterLimit |
+static constexpr uint32_t kPathFillOptions = OptionAA | OptionTopology | OptionLimits | OptionJoin | OptionMiterLimit |
     OptionTessTol | OptionRefine | OptionMode | OptionOutput | OptionMaxCurvePoints |
     OptionLegacyUVs | OptionFillRule | OptionIntersections | OptionClipperPrecision;
-static constexpr uint32_t kPathSDFOptions = OptionDistance | OptionDistanceSign |
-    OptionJoin | OptionMiterLimit | OptionTessTol | OptionRefine | OptionMode |
-    OptionOutput | OptionMaxCurvePoints | OptionLegacyUVs | OptionFillRule |
+static constexpr uint32_t kPathSDFOptions = OptionSDF |
+    OptionTessTol | OptionMode |
+    OptionOutput | OptionMaxCurvePoints | OptionFillRule |
     OptionIntersections | OptionClipperPrecision;
-static constexpr uint32_t kPathStrokeOptions = OptionFringe | OptionCap | OptionJoin |
+static constexpr uint32_t kPathStrokeOptions = OptionAA | OptionLimits | OptionCap | OptionJoin |
     OptionMiterLimit | OptionTessTol | OptionClosed | OptionMode | OptionOutput |
     OptionMaxCurvePoints | OptionLegacyUVs | OptionDashPattern | OptionDashOffset |
     OptionMaxDashSegments;
@@ -399,7 +399,7 @@ static int Flatten(lua_State *L)
 static int FillMesh(lua_State *L, bool sdf)
 {
     MeshOptions options = GetMeshOptions(L, 2, sdf ? kPathSDFOptions : kPathFillOptions,
-                                         sdf ? "path.meshSDF" : "path.meshFill");
+                                         sdf ? "path.meshDistance" : "path.meshFill");
     std::vector<PathContour> contours;
     std::string error;
     if (!ReadPath(L, 1, options, contours, error))
@@ -409,13 +409,14 @@ static int FillMesh(lua_State *L, bool sdf)
     if (!PreparePathFillGroups(contours, options, groups, error))
         return PushGeometryFailure(L, error.c_str());
     MeshResult result;
-    if (!BuildFillMesh(groups, options, sdf, result, error))
+    if (!BuildFillMesh(groups, options, sdf, result, error) ||
+        !ApplyPathUVBounds(contours, result, error))
         return PushGeometryFailure(L, error.c_str());
     return PushMeshResult(L, result, options.output, options.legacyUVs);
 }
 
 static int MeshFill(lua_State *L) { return FillMesh(L, false); }
-static int MeshSDF(lua_State *L) { return FillMesh(L, true); }
+static int MeshDistance(lua_State *L) { return FillMesh(L, true); }
 
 static int MeshStroke(lua_State *L)
 {
@@ -443,10 +444,39 @@ static int MeshStroke(lua_State *L)
 
 } // namespace
 
+bool ApplyPathUVBounds(const std::vector<PathContour>& contours,
+                       MeshResult& mesh, std::string& error)
+{
+    std::array<double,4> bounds{};
+    bool first=true;
+    for (const auto& contour:contours) for (auto p:contour.points) {
+        if (first) { bounds={p.first,p.second,p.first,p.second};first=false; }
+        bounds[0]=std::min(bounds[0],double(p.first));
+        bounds[1]=std::min(bounds[1],double(p.second));
+        bounds[2]=std::max(bounds[2],double(p.first));
+        bounds[3]=std::max(bounds[3],double(p.second));
+    }
+    if (first || !(bounds[2]>bounds[0]) || !(bounds[3]>bounds[1])) {
+        error="path requires non-degenerate UV bounds";return false;
+    }
+    if (bounds==mesh.uvBounds) return true;
+    mesh.uvs.resize(mesh.vertices.size());
+    for (size_t i=0;i<mesh.vertices.size();++i) {
+        size_t axis=i%2;
+        double value=(double(mesh.vertices[i])-bounds[axis])/(bounds[axis+2]-bounds[axis]);
+        if (!std::isfinite(value) || std::abs(value)>std::numeric_limits<float>::max()) {
+            error="path float32 UV precision insufficient";return false;
+        }
+        mesh.uvs[i]=static_cast<float>(value);
+    }
+    mesh.uvBounds=bounds;
+    return true;
+}
+
 void RegisterPath(lua_State *L)
 {
     luaL_Reg functions[] = {
-        {"flatten", Flatten}, {"meshFill", MeshFill}, {"meshSDF", MeshSDF},
+        {"flatten", Flatten}, {"meshFill", MeshFill}, {"meshDistance", MeshDistance},
         {"meshStroke", MeshStroke}, {nullptr, nullptr}
     };
     luaL_register(L, nullptr, functions);
