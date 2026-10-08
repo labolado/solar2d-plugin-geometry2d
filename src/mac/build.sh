@@ -10,6 +10,7 @@ OUTPUT_DIR=${1:-.}
 TARGET_NAME=plugin_geometry2d
 OUTPUT_SUFFIX=dylib
 CONFIG=${CONFIG:-Release}
+deployment_target=${MACOSX_DEPLOYMENT_TARGET:-12.0}
 PLUGIN_BUILD=${PLUGIN_BUILD:-2025.3720}
 
 #
@@ -29,11 +30,12 @@ popd > /dev/null
 echo "OUTPUT_DIR: $OUTPUT_DIR"
 
 # Clean.
-xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" clean
+xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" \
+    MACOSX_DEPLOYMENT_TARGET="$deployment_target" clean
 
 # Build Mac.
 xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" \
-    ARCHS="x86_64 arm64" ONLY_ACTIVE_ARCH=NO
+    MACOSX_DEPLOYMENT_TARGET="$deployment_target" ARCHS="x86_64 arm64" ONLY_ACTIVE_ARCH=NO
 
 lib_name=$TARGET_NAME.$OUTPUT_SUFFIX
 

@@ -150,6 +150,6 @@ do
 	test -f "$dst_dir/jniLibs/$abi/$lib_name"
 done
 
-echo Packing binaries...
-tar -czvf data.tgz -C "$path" jniLibs -C "$path/jniLibs/armeabi-v7a" "$lib_name" -C "$path" metadata.lua
-echo $path/data.tgz.
+# echo Packing binaries...
+# tar -czvf data.tgz -C "$path" jniLibs -C "$path/jniLibs/armeabi-v7a" "$lib_name" -C "$path" metadata.lua
+# echo $path/data.tgz.

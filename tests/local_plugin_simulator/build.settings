@@ -1,0 +1,2 @@
+-- The local-mode runner must remove plugin download declarations in its copy.
+settings={plugins={['plugin.geometry2d']={publisherId='com.labolado'}}}

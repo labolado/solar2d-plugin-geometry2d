@@ -1,0 +1,2 @@
+-- The capability probe loads the local built dylib explicitly; no installation.
+settings={}

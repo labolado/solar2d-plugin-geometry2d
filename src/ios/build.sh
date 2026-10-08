@@ -12,15 +12,17 @@ pushd "$path" > /dev/null; path=$(pwd); popd > /dev/null
 
 TARGET_NAME=plugin_geometry2d
 CONFIG=${CONFIG:-Release}
+deployment_target=${IPHONEOS_DEPLOYMENT_TARGET:-15.0}
 lib_version=${PLUGIN_BUILD:-2025.3720}
 lib_name=lib${TARGET_NAME}.a   # libplugin_geometry2d.a
 
 # Clean + build both SDKs.
-xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" clean
 xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" \
-    -sdk iphoneos ARCHS=arm64 ONLY_ACTIVE_ARCH=NO
+    IPHONEOS_DEPLOYMENT_TARGET="$deployment_target" clean
 xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" \
-    -sdk iphonesimulator ARCHS="x86_64 arm64" ONLY_ACTIVE_ARCH=NO
+    -sdk iphoneos IPHONEOS_DEPLOYMENT_TARGET="$deployment_target" ARCHS=arm64 ONLY_ACTIVE_ARCH=NO
+xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" \
+    -sdk iphonesimulator IPHONEOS_DEPLOYMENT_TARGET="$deployment_target" ARCHS="x86_64 arm64" ONLY_ACTIVE_ARCH=NO
 
 # $1 = plugin platform dir (iphone|iphone-sim)
 # $2 = xcodebuild SDK build-dir suffix (iphoneos|iphonesimulator)

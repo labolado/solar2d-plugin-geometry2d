@@ -1,4 +1,8 @@
--- local plugin_base = "https://github.com/labolado/solar2d-plugin_geometry2d/releases/download/v2/"
+-- Planned release: URLs become usable only after this tag has been published.
+-- For local development use src/mac/start_simulator.sh (isolated local plugin).
+local plugin_version = "v1"
+local plugin_base = "https://github.com/labolado/solar2d-plugin-geometry2d/releases/download/"
+    .. plugin_version .. "/"
 
 settings =
 {
@@ -20,20 +24,12 @@ settings =
             publisherId = "com.labolado",
             supportedPlatforms =
             {
-                -- ["mac-sim"]    = { url = plugin_base .. "2025.3720-mac-sim.tgz" },
-                -- ["android"]    = { url = plugin_base .. "2025.3720-android.tgz" },
-                -- ["iphone"]     = { url = plugin_base .. "2025.3720-iphone.tgz" },
-                -- ["iphone-sim"] = { url = plugin_base .. "2025.3720-iphone-sim.tgz" },
-                -- ["win32-sim"]  = { url = plugin_base .. "2025.3720-win32-sim.tgz" },
-                -- ["appletvos"]  = { url = plugin_base .. "2025.3720-appletvos.tgz" },
-                ["android"] = { url = "http://127.0.0.1:10980/plugins/android/plugin.geometry2d/2025.3720-android.tgz" },
-                ["iphone"] = { url = "http://127.0.0.1:10980/plugins/iphone/plugin.geometry2d/2025.3720-iphone.tgz" },
-                ["iphone-sim"] = { url = "http://127.0.0.1:10980/plugins/iphone-sim/plugin.geometry2d/2025.3720-iphone-sim.tgz" },
-                ["macos"] = { url = "http://127.0.0.1:10980/plugins/mac-sim/plugin.geometry2d/2025.3720-mac-sim.tgz" },
-                ["mac-sim"] = { url = "http://127.0.0.1:10980/plugins/mac-sim/plugin.geometry2d/2025.3720-mac-sim.tgz" },
-                ["win32"] = { url = "http://127.0.0.1:10980/plugins/win32/plugin.geometry2d/2025.3720-win32-sim.tgz" },
-                ["win32-sim"] = { url = "http://127.0.0.1:10980/plugins/win32/plugin.geometry2d/2025.3720-win32-sim.tgz" },
-                ["appletvos"] = { url = "http://127.0.0.1:10980/plugins/appletvos/plugin.geometry2d/2025.3720-appletvos.tgz" },
+                ["mac-sim"]    = { url = plugin_base .. "2025.3720-mac-sim.tgz" },
+                ["android"]    = { url = plugin_base .. "2025.3720-android.tgz" },
+                ["iphone"]     = { url = plugin_base .. "2025.3720-iphone.tgz" },
+                ["iphone-sim"] = { url = plugin_base .. "2025.3720-iphone-sim.tgz" },
+                ["win32-sim"]  = { url = plugin_base .. "2025.3720-win32-sim.tgz" },
+                ["appletvos"]  = { url = plugin_base .. "2025.3720-appletvos.tgz" },
             }
         },
     }

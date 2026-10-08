@@ -11,14 +11,16 @@ path=$(dirname "$0")
 pushd "$path" > /dev/null; path=$(pwd); popd > /dev/null
 
 CONFIG=${CONFIG:-Release}
+deployment_target=${TVOS_DEPLOYMENT_TARGET:-15.0}
 FW=Corona_plugin_geometry2d
 lib_version=${PLUGIN_BUILD:-2025.3720}
 
-xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" clean
 xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" \
-    -sdk appletvos ARCHS=arm64 ONLY_ACTIVE_ARCH=NO
+    TVOS_DEPLOYMENT_TARGET="$deployment_target" clean
 xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" \
-    -sdk appletvsimulator ARCHS="x86_64 arm64" ONLY_ACTIVE_ARCH=NO
+    -sdk appletvos TVOS_DEPLOYMENT_TARGET="$deployment_target" ARCHS=arm64 ONLY_ACTIVE_ARCH=NO
+xcodebuild -project "$path/Plugin.xcodeproj" -configuration "$CONFIG" \
+    -sdk appletvsimulator TVOS_DEPLOYMENT_TARGET="$deployment_target" ARCHS="x86_64 arm64" ONLY_ACTIVE_ARCH=NO
 
 DEV_FW="$path/build/$CONFIG-appletvos/${FW}.framework"
 SIM_FW="$path/build/$CONFIG-appletvsimulator/${FW}.framework"

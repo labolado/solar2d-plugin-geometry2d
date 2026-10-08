@@ -253,7 +253,7 @@ All `util` and `path` mesh functions accept `opts.output`:
 
 | Value | Result |
 |-------|--------|
-| `"table"` | Default. Lua number tables. SDF v2 changes distance semantics (see migration below). |
+| `"table"` | Default. Lua number tables; distance semantics are specified below. |
 | `"buffers"` | Mesh data whose `vertices`, `indices`, and `alphas` / `distances` are owning `CoronaMemory` descriptors. Alpha meshes also include packed `fillVertexColors`. |
 | `"mesh"` | Returns `displayMesh, attributes`; alpha meshes pass packed vertex colors directly to `display.newMesh()`, and the second result retains all packed auxiliary attributes. |
 
@@ -533,7 +533,9 @@ It can reuse the distance shader but is not an equivalent-accuracy replacement.
 Neither method accepts `aa`, `aaWidth`, `fringe`, `join`, `cap`, `refine`,
 `topology`, or `legacyUVs`. The util distance entries reject `tessTol`; path entries
 accept it strictly for curve flattening. No automatic fallback or lossy repair
-is enabled. The known backup 46/47 float32 failures remain unresolved.
+is enabled. Float32 collapse can occur in deep core triangulation, not only in
+AA bands; these precision failures remain unresolved. Dropping failed triangles
+or applying unverified local repair is not a supported fallback.
 
 ### Partition distance field
 
@@ -685,12 +687,6 @@ transparent, not white. When replacing an on-screen mesh, retain the old object
 until the replacement is ready, then swap; do not delete it before preparing the
 replacement. This is a documented one-render preparation delay, not synchronous
 first-frame attribute initialization. No Solar2D source changes are required.
-
-### Migration (breaking API cleanup)
-
-See [mesh-api-migration.md](mesh-api-migration.md) for all removed names, option
-mapping, UV changes, shader attribute mapping and retained-view migration.
-Known float32 failures are not fixed by this API reorganization.
 
 ## path
 

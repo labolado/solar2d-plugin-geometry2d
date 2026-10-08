@@ -1,0 +1,2 @@
+-- Uses the locally installed Simulator dylib. Device packaging is outside this test.
+settings={orientation={default='landscapeRight',supported={'landscapeRight'}}}

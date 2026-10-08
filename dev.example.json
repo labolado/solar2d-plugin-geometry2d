@@ -1,0 +1,5 @@
+{
+  "coronaRoot": "/path/to/corona",
+  "simulator": "/path/to/Corona Simulator.app",
+  "localPluginServerRoot": null
+}

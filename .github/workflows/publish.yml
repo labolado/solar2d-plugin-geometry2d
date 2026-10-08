@@ -1,23 +1,32 @@
 # Build every published native artifact from source before creating a release.
-# Manual runs are compile-only so CI changes can be tested without publishing.
+# Only an explicit version-tag push can publish. All other runs are compile-only.
 
 name: publish
 
 on:
   push:
+    branches: ['**']
+    tags: ['v*']
     paths:
       - '.github/workflows/publish.yml'
       - '.github/scripts/**'
       - '.gitmodules'
       - 'docs/**'
-      - 'plugins/**'
       - 'src/**'
       - 'third_party/**'
-  repository_dispatch:
+      - 'scripts/**'
+      - 'tests/**'
+      - 'examples/**'
+      - 'VERSION'
+  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: native-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
 
 env:
   SOLAR2D_YEAR: '2025'
@@ -25,7 +34,20 @@ env:
   PLUGIN_BUILD: '2025.3720'
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate version and release intent
+        run: python3 scripts/release_policy.py --event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF"
+      - run: python3 scripts/check_public_tree.py
+      - run: python3 -m unittest discover -s tests/tooling -v
+
   build-macos:
+    needs: validate
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +86,7 @@ jobs:
           if-no-files-found: error
 
   build-ios:
+    needs: validate
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,6 +125,7 @@ jobs:
           if-no-files-found: error
 
   build-tvos:
+    needs: validate
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -136,6 +160,7 @@ jobs:
           if-no-files-found: error
 
   build-android:
+    needs: validate
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -195,6 +220,7 @@ jobs:
           if-no-files-found: error
 
   build-win32:
+    needs: validate
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -250,17 +276,34 @@ jobs:
 
   publish-release:
     needs:
+      - validate
       - build-macos
       - build-ios
       - build-tvos
       - build-android
       - build-win32
-    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && (github.event_name == 'push' || github.event_name == 'repository_dispatch') }}
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Replace committed binaries with fresh CI artifacts
+      - name: Refuse to overwrite an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(curl --silent --show-error --output "$RUNNER_TEMP/release-check.json" \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME")
+          if [ "$status" != 404 ]; then
+            echo "Refusing release creation: expected absent release (404), got $status"
+            exit 1
+          fi
+
+      - name: Prepare generated release directory
         run: |
           rm -rf "plugins/$PLUGIN_BUILD"
           mkdir -p "plugins/$PLUGIN_BUILD"
@@ -294,14 +337,14 @@ jobs:
             )
           done
 
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: plugins/${{ env.PLUGIN_BUILD }}-*.tgz
-          name: Release v${{ github.run_number }}
-          tag_name: v${{ github.run_number }}
+      - name: Create draft, upload all artifacts, then publish
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --draft \
+            --title "Release $GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" plugins/"$PLUGIN_BUILD"-*.tgz
+          gh release edit "$GITHUB_REF_NAME" --draft=false
 
       - name: Request Solar2D directory update
         shell: bash
@@ -312,7 +355,7 @@ jobs:
             echo "No ISSUE_PAT secret; skipping directory update."
             exit 0
           fi
-          curl --request POST \
+          curl --fail-with-body --request POST \
             --url https://api.github.com/repos/solar2d/plugins.solar2d.com/dispatches \
             --header "authorization: Bearer $ISSUE_PAT" \
             --header 'content-type: application/json' \
