@@ -16,3 +16,10 @@ git submodule update --init --recursive
 bash src/mac/start_simulator.sh
 python3 tests/run_simulator.py tests/api_simulator
 ```
+
+## License
+
+Original project code is licensed under the [MIT License](LICENSE),
+Copyright (c) 2026 LaboLado Inc. Third-party dependencies and derived code retain
+their respective licenses and copyright notices; see the relevant source files
+and third-party license files.
