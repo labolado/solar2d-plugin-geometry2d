@@ -8,17 +8,36 @@ on:
     branches: ['**']
     tags: ['v*']
     paths:
-      - '.github/workflows/publish.yml'
+      - '.github/workflows/**'
       - '.github/scripts/**'
       - '.gitmodules'
-      - 'docs/**'
+      - '.gitignore'
       - 'src/**'
       - 'third_party/**'
       - 'scripts/**'
       - 'tests/**'
       - 'examples/**'
+      - 'sync_local_plugins.sh'
+      - 'dev.example.json'
       - 'VERSION'
+      - '!**/*.md'
+      - '!**/*.rst'
   pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/scripts/**'
+      - '.gitmodules'
+      - '.gitignore'
+      - 'src/**'
+      - 'third_party/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'examples/**'
+      - 'sync_local_plugins.sh'
+      - 'dev.example.json'
+      - 'VERSION'
+      - '!**/*.md'
+      - '!**/*.rst'
   workflow_dispatch:
 
 permissions:

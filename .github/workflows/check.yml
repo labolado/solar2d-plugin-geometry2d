@@ -1,6 +1,21 @@
 name: source checks
 on:
   pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/scripts/**'
+      - '.gitmodules'
+      - '.gitignore'
+      - 'src/**'
+      - 'third_party/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'examples/**'
+      - 'sync_local_plugins.sh'
+      - 'dev.example.json'
+      - 'VERSION'
+      - '!**/*.md'
+      - '!**/*.rst'
   workflow_dispatch:
 permissions:
   contents: read

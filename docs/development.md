@@ -93,6 +93,12 @@ changes with this deployment-policy update.
 `plugins/` is generated, not a source dependency. Build scripts recreate it;
 metadata sources stay in `src/`. CI builds all artifacts and packages Actions
 outputs, including all four Android ABIs. Releases distribute binaries.
+Automatic branch/PR CI is limited to source, build/CI configuration, scripts,
+tests (including fixtures), examples and VERSION. Markdown/reStructuredText and
+`docs/` changes alone do not trigger CI; mixed code/documentation changes do.
+Manual `workflow_dispatch` remains available. Version-tag pushes are intentionally
+not path-filtered. Do not require a path-filtered workflow as a mandatory check
+for documentation-only PRs: skipped checks can otherwise block merging.
 Branch pushes, PRs and `workflow_dispatch` build without publishing. Only an
 explicit version-tag push can publish; VERSION, tag and the example pin must
 agree. Test CI changes manually before creating a release tag.
