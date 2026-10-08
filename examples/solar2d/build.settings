@@ -1,6 +1,6 @@
 -- Planned release: URLs become usable only after this tag has been published.
 -- For local development use src/mac/start_simulator.sh (isolated local plugin).
-local plugin_version = "v1"
+local plugin_version = "v2"
 local plugin_base = "https://github.com/labolado/solar2d-plugin-geometry2d/releases/download/"
     .. plugin_version .. "/"
 
