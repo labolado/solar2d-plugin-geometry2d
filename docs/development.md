@@ -96,10 +96,14 @@ outputs, including all four Android ABIs. Releases distribute binaries.
 Automatic branch/PR CI is limited to source, build/CI configuration, scripts,
 tests (including fixtures), examples and VERSION. Markdown/reStructuredText and
 `docs/` changes alone do not trigger CI; mixed code/documentation changes do.
+Changes limited to `VERSION` and `examples/solar2d/build.settings` (optionally
+with documentation) run only `version checks`, not tooling or platform builds.
+This exception applies to the entire example build.settings file. Changes to
+release-policy code or any other build-triggering file still run full CI.
 Manual `workflow_dispatch` remains available. Version-tag pushes are intentionally
 not path-filtered. Do not require a path-filtered workflow as a mandatory check
 for documentation-only PRs: skipped checks can otherwise block merging.
-Branch pushes, PRs and `workflow_dispatch` build without publishing. Only an
+Branch/PR checks and manual builds do not publish. Only an
 explicit version-tag push can publish; VERSION, tag and the example pin must
 agree. Test CI changes manually before creating a release tag.
 

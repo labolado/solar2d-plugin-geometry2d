@@ -31,7 +31,7 @@ def main():
                            (ROOT / 'examples/solar2d/build.settings').read_text())
     except ValueError as error:
         parser.error(str(error))
-    print('RELEASE_POLICY: ' + ('tag release permitted' if publish else 'compile only'))
+    print('RELEASE_POLICY: ' + ('tag release permitted' if publish else 'version valid; no release'))
 
 
 if __name__ == '__main__':

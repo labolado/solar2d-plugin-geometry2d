@@ -6,6 +6,7 @@ The initial planned tag is `v1` (`VERSION` contains `1`); it is not evidence of 
 | Event | Result |
 |---|---|
 | Relevant branch push / pull request | Validate and build platform artifacts only |
+| Only VERSION / example build.settings, optionally with docs | Version consistency check only; no platform builds |
 | Documentation-only branch push / pull request | No automatic CI |
 | workflow_dispatch, including on a tag | Validate and build only |
 | Push vN matching VERSION, e.g. v1 or v2 | Build all platforms, then publish that tag |

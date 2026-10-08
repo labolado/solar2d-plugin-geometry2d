@@ -32,15 +32,26 @@ class CIPaths(unittest.TestCase):
         self.assertEqual(filters('publish.yml', 'pull_request'), expected)
         self.assertEqual(filters('check.yml', 'pull_request'), expected)
         for path in ('docs/api.md', 'README.md', 'AGENTS.md',
-                     'tests/ribbon_simulator/README.md', 'src/mac/notes.rst'):
+                     'tests/ribbon_simulator/README.md', 'src/mac/notes.rst',
+                     'VERSION', 'examples/solar2d/build.settings'):
             self.assertFalse(included(path, expected), path)
         for path in ('src/shared/mesh_builder.cpp', 'src/mac/build.sh',
                      'third_party/clipper2', 'tests/tooling/test_ci_paths.py',
                      'tests/inner_stroke_prototypes/fixtures/backup_geometry.json',
                      '.github/workflows/check.yml', '.gitignore', '.gitmodules',
-                     'examples/solar2d/build.settings', 'sync_local_plugins.sh',
-                     'dev.example.json', 'VERSION'):
+                     'sync_local_plugins.sh', 'dev.example.json'):
             self.assertTrue(included(path, expected), path)
+
+    def test_version_only_filters(self):
+        expected = ['VERSION', 'examples/solar2d/build.settings']
+        self.assertEqual(filters('version.yml', 'push'), expected)
+        self.assertEqual(filters('version.yml', 'pull_request'), expected)
+        native = filters('publish.yml', 'push')
+        self.assertFalse(any(included(p, native) for p in expected + ['docs/api.md']))
+        self.assertTrue(any(included(p, native) for p in expected + ['src/mac/build.sh']))
+        publish = (ROOT / '.github/workflows/publish.yml').read_text()
+        self.assertIn("tags: ['v*']", publish)
+        self.assertIn('  workflow_dispatch:', publish)
 
 
 if __name__ == '__main__':

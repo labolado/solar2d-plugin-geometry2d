@@ -1,0 +1,26 @@
+name: version checks
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'VERSION'
+      - 'examples/solar2d/build.settings'
+  pull_request:
+    paths:
+      - 'VERSION'
+      - 'examples/solar2d/build.settings'
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate version consistency
+        run: python3 scripts/release_policy.py --event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF"
